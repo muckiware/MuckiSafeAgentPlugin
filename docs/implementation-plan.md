@@ -1,366 +1,773 @@
-# MuckiSafeAgentPlugin and Host Agent Implementation Plan
+# MuckiSafe Agent Implementation Plan
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task. Apply strict RED-GREEN-REFACTOR and two-stage review (spec compliance, then code quality) to every production-code task.
 
-**Goal:** Im Repository `muckiware/MuckiSafeAgentPlugin` ein eigenständiges Shopware-Plugin und einen als Release-Binary ausgelieferten Linux-Agenten bauen, die privilegierte Pre-, Post- und Finally-Aktionen für MuckiSafe-Backups zuverlässig auf dem Host ausführen, ohne normale Installationen des `MuckiFacilityPlugin` mit Agent-Funktionen zu belasten. macOS folgt in Ausbaustufe 2.
+**Goal:** Das freigegebene MuckiSafe-Agent-Design in drei Repositories implementieren: ein neutrales `BackupFinishedEvent` im `MuckiFacilityPlugin`, die Control Plane plus Linux-Agent im Monorepo `MuckiSafeAgentPlugin` und anschließend die Distribution im `MuckiSafe`-Image.
 
-**Architecture:** `MuckiFacilityPlugin` bleibt das allgemeine Backup-Plugin. `MuckiSafeAgentPlugin` ist eine optionale Erweiterung und besitzt sämtliche Agent-Tabellen, Admin-Oberflächen, Action-Definitionen, Hook-Zuordnungen, Job-Queue und Agent-API. PHP-Plugin und Go-Agent-Quellcode liegen im selben Repository, bleiben aber logisch getrennte Control- und Execution-Plane. GitHub Actions kompiliert statische Linux-Binaries; Zielhosts und das MuckiSafe-Image benötigen weder Go noch ein Go-Runtime-Paket. HTTPS ist der sichere Default, HTTP kann bewusst aktiviert werden. Für ein garantiertes `finally` erhält Facility den freigegebenen neutralen `BackupFinishedEvent`-Lifecycle-Hook.
+**Architecture:** `MuckiFacilityPlugin` bleibt allgemein und erhält nur einen neutralen Lifecycle-Contract. `MuckiSafeAgentPlugin` besitzt alle Agent-Daten, Admin-Funktionen, API-Routen, Actions, Jobs und den Go-Quellcode unter `agent/`. Der als GitHub-Release-Binary ausgelieferte Linux-Agent pollt die signierte HTTP(S)-API; Wakeup-Dateien sind nur Hinweise. Das MuckiSafe-Image installiert ausschließlich das PHP-Plugin und enthält weder Go-Toolchain noch Agent-Binary.
 
-**Tech Stack:** Shopware 6.6/6.7, PHP 8.3–8.5, PHPUnit, MySQL 8.4, Go 1.24+ ausschließlich für Entwicklung und GitHub CI/Release-Builds, Go-Unit-Tests, HTTP(S)/JSON, HMAC-SHA256, `fsnotify` und systemd. launchd/macOS folgt in Ausbaustufe 2.
+**Tech Stack:** Shopware `~6.6.10.14 || ~6.7.6`, PHP `~8.3 || ~8.4 || ~8.5`, PHPUnit 11.5, Doctrine DBAL, MySQL 8.0/8.4, sodium, JavaScript/Vue-Administration, Go 1.24+ nur in Entwicklung/CI, `fsnotify`, systemd, GitHub Actions, Docker Buildx.
 
 ---
 
-## 1. Produkt- und Repository-Grenzen
+## 1. Belegte Ausgangslage
 
-### 1.1 MuckiFacilityPlugin – bleibt allgemein
+### 1.1 Analysierte Revisionen
 
-Repository: `muckiware/MuckiFacilityPlugin`
-
-Verantwortung:
-
-- Restic-Repositories, Dumps, Datei-Backups, Restore, Schedules und Checks.
-- Bestehende `BeforeBackupCreatedEvent`- und `AfterBackupCreatedEvent`-Extension-Points.
-- Bestehende Batch-/PHP-Hooks bleiben für normale Shop-Installationen erhalten.
-- Keine Agent-Entities, keine Agent-API, keine Agent-Administration, keine Semaphoren und keine Go-Agent-Abhängigkeit.
-
-Einzige geplante Änderung:
-
-- ein neutrales `BackupFinishedEvent`, das in jedem Ausgang – Erfolg und Fehler – ausgelöst wird;
-- eine generische Fehlerpriorität, damit ein Fehler eines Finished-Subscribers einen vorhandenen Backup-Primärfehler nicht überschreibt.
-
-Diese Erweiterung ist keine MuckiAgent-Funktion, sondern ein allgemeiner Lifecycle-Extension-Point. Ohne eine solche Änderung ist ein garantiertes `finally` aus einem separaten Plugin nicht zuverlässig möglich. Eine Service-Dekoration von `BackupExecution` wäre technisch möglich, aber stark an private Implementierungsdetails gekoppelt und würde das Finally erst nach Freigabe des globalen Locks ausführen; sie wird deshalb verworfen.
-
-### 1.2 MuckiSafeAgentPlugin – optionale Control Plane
-
-Repository: `muckiware/MuckiSafeAgentPlugin`
-
-Composer-Paket: `muckiware/mucki-safe-agent-plugin`
-
-Plugin-Klasse: `MuckiSafeAgentPlugin\MuckiSafeAgentPlugin`
-
-Verantwortung:
-
-- Host-Agenten provisionieren, sperren und überwachen;
-- deklarative Actions und Parameterschemata verwalten;
-- Facility-Repositories mit Pre/Post/Finally-Actions verknüpfen;
-- BackupRuns und HostJobs persistieren;
-- Jobs atomar claimen, leasen und abschließen;
-- Semaphoren als unverbindliche Wakeups schreiben;
-- eigene Administration, ACL, API, Audit und Cleanup;
-- Facility-Lifecycle-Events abonnieren.
-
-Abhängigkeit:
-
-```json
-{
-  "require": {
-    "shopware/core": "~6.6.10.14 || ~6.7.6",
-    "muckiware/facility-plugin": "^0.11"
-  }
-}
-```
-
-Die genaue Mindestversion wird durch die Facility-Version mit `BackupFinishedEvent` bestimmt. Aktivierung des Agent-Plugins muss abbrechen, wenn Facility nicht installiert und aktiv ist.
-
-### 1.3 MuckiAgent – Execution Plane im selben Repository
-
-Quellpfad: `muckiware/MuckiSafeAgentPlugin/agent/`
-
-Binary: `mucki-agent`
-
-Verantwortung:
-
-- ausgehendes HTTP(S)-Polling mit HTTPS als Default;
-- Semaphore-Wakeup;
-- Claim, Lease, Heartbeat und Completion;
-- lokale Alias-Policy;
-- deklarative Primitives;
-- Timeouts, Prozessgruppen, Output-Limits und lokales Idempotenzjournal;
-- systemd-Supervision in V1; launchd folgt in Ausbaustufe 2.
-
-Der Go-Agent kennt weder Shopware-DAL noch die MuckiSafe-Datenbank. Er wird von GitHub Actions kompiliert und als Release-Binary für `linux/amd64` und `linux/arm64` veröffentlicht. Auf Produktivhosts wird nur das Binary installiert; Go ist dort keine Abhängigkeit.
-
-### 1.4 MuckiSafe-Distribution
-
-Repository: `muckiware/MuckiSafe`
-
-Verantwortung:
-
-- `MuckiSafeAgentPlugin` zusätzlich zum Facility-Plugin in das MuckiSafe-Image einbauen;
-- Wakeup-Bind-Mount und Environment dokumentieren;
-- Version des Agent-Plugins im Build und in `.muckisafe-versions` ausweisen;
-- Go-Agent nicht kompilieren oder ins Containerimage legen – das vorgebaute GitHub-Release-Binary wird separat auf dem Host installiert.
-
-Normale Shopware-Installationen können weiterhin ausschließlich `MuckiFacilityPlugin` installieren.
-
-## 2. Festgelegte Entscheidungen
-
-1. **Transport:** Dedizierte MuckiSafeAgentPlugin-HTTP(S)-API mit atomarem Claim, Lease, Heartbeat und Completion. HTTPS ist Default; HTTP ist über eine explizite Produktionskonfiguration zulässig. Semaphore nur als Wakeup.
-2. **Aktionsmodell:** Action-ID, deklarative Definition und typisierte JSON-Parameter. Kein frei ausführbarer Shell-/PowerShell-Longtext.
-3. **Rechte:** Der Linux-Agent läuft in V1 vollständig als `root` unter systemd. macOS/launchd folgt in Ausbaustufe 2.
-4. **Phasen:** V1 unterstützt `pre`, `post` und garantiertes `finally`.
-5. **Plugin-Trennung:** Agent-Funktionalität lebt ausschließlich im `MuckiSafeAgentPlugin`; Facility bleibt ohne Agent-Abhängigkeit.
-6. **Legacy-Neubewertung:** Die frühere Entscheidung „Batch-/PHP-Hooks sofort entfernen“ gilt nur für MuckiSafe-Installationen, die auf Agent-Hooks migriert wurden. Die Hooks werden nicht aus `MuckiFacilityPlugin` entfernt, weil normale Shops sie weiterhin verwenden können. `MuckiSafeAgentPlugin` verbietet eine gemischte Konfiguration pro Repository.
-7. **Repository:** PHP-Plugin und Go-Agent-Quellcode liegen gemeinsam in `muckiware/MuckiSafeAgentPlugin`.
-8. **Facility-Lifecycle:** `BackupFinishedEvent` wird im Facility-Plugin ergänzt.
-9. **Provisionierung:** Die Administration erzeugt ein einmalig angezeigtes Agent-Secret; Rotation erzeugt ein neues einmalig angezeigtes Secret.
-10. **Wakeup:** Ein globaler, flacher Hostpfad ohne Instanz-Unterordner.
-11. **Actions:** Pro Phase genau eine Action; eine Action darf mehrere geordnete Steps enthalten.
-12. **Plattformen:** V1 Linux; macOS ist Ausbaustufe 2.
-13. **V1-Abnahme:** Bitwarden, Jellyfin, Immich und Paperless sind verpflichtende reale Referenzfälle.
-14. **API:** Regulärer Betrieb bevorzugt über HTTPS; explizit konfiguriertes HTTP bleibt unterstützt.
-15. **Resultatdaten:** stdout/stderr werden nur bei Fehlern gespeichert, jeweils als maximal 64-KiB-Tail.
-16. **Go-Abhängigkeit:** Go ist nur für lokale Entwicklung und GitHub CI/Release-Builds erforderlich, niemals für MuckiSafe-Image oder Produktivhost.
-
-## 3. Recherche: Build-vs-Buy
-
-| Kandidat | Eignung | Entscheidung |
+| Repository | Revision | Zustand |
 |---|---|---|
-| Rundeck Enterprise Runner | Technisch nahezu passend, aber kommerziell und mit eigener Plattform. | Nicht übernehmen. |
-| OliveTin | Schlanker Go-Executor mit definierten Aktionen, aber ohne Pull-Queue, Claim/Lease und MuckiSafe-Integration. | Sicherheitsmodell als Referenz nutzen, nicht als Runtime-Abhängigkeit. |
-| Salt, Nomad, Ansible, CI-Runner | Funktionsreich, aber deutlich zu schwer oder als Root-Shell-Executor nicht sicherer. | Verwerfen. |
-| `adnanh/webhook` | Klein, aber Push statt Pull und keine durable Jobsemantik. | Verwerfen. |
-| systemd.path / launchd | Geeignet für Supervision/Wakeup, nicht als Control Plane. | Nur zur Agent-Supervision verwenden. |
-| NATS JetStream | Gute Queue, aber zusätzlicher Broker und eigener Executor weiterhin nötig. | V1 YAGNI. |
+| `muckiware/MuckiFacilityPlugin` | `1a37677ad6682501c004167420fdbcf90c0cdcbf` | 399 Dateien, sauberer `main`; Plugin `v0.10.1` |
+| `muckiware/MuckiSafeAgentPlugin` | `4c81815ca0a4fe521afc9dcf92aa670f87aa993b` | nur `LICENSE` und das bisherige Design unter `docs/implementation-plan.md` |
+| `muckiware/MuckiSafe` | `ef29f42aebae9774cf955767af0bc4158f1c2160` | 33 Dateien, sauberer `main`; Docker-/Compose-/Release-Rezept vorhanden |
 
-**Ergebnis:** Kein schlanker fertiger OSS-Ansatz erfüllt die Anforderungen. Eigenbau mit zwei logisch getrennten Laufzeitkomponenten in einem gemeinsamen AgentPlugin-Repository ist angemessen.
+### 1.2 Facility-Fakten
 
-## 4. Plugin-übergreifender Lifecycle
+- Alle aktiven Ausführungspfade konvergieren auf `src/Schedule/BackupExecution.php::execute()` und anschließend `src/Services/Backup.php::createBackup()`.
+- `BackupExecution` hält den globalen Lock `mucki-facility.backup` bis `createBackup()` zurückkehrt oder wirft.
+- `createBackup()` dispatcht heute `BeforeBackupCreatedEvent`, führt den Kern aus, dispatcht nur im Erfolgspfad `AfterBackupCreatedEvent` und speichert die Dauer in `finally`.
+- `src/Subscriber/BackupCommandSubscriber.php` hört mit Standardpriorität `0` auf Before und After.
+- `Backup` besitzt den EventDispatcher bereits; `services.xml` benötigt für das neue Event keine Änderung.
+- Tests laufen über Shopwares Projektroot mit `./vendor/bin/phpunit --configuration="custom/plugins/MuckiFacilityPlugin"`.
+- Facility-CI testet Shopware `v6.6.10.25`/`v6.7.14.1`, PHP 8.4/8.5 und MySQL 8.0/8.4.
 
-### 4.1 Bestehender Facility-Ablauf
+### 1.3 MuckiSafe-Fakten
 
-`MuckiFacilityPlugin\Services\Backup::createBackup()` dispatcht derzeit:
+- `docker/Dockerfile` installiert Facility-, Facility-Menu- und Log-Plugin gemeinsam per Composer.
+- `docker/entrypoint.sh` installiert/aktualisiert/aktiviert composer-installierte Plugins über `shopware/deployment-helper`.
+- `app` und `scheduler` verwenden dasselbe Image, besitzen aber noch keinen Agent-Wakeup-Mount.
+- `.github/workflows/docker-publish.yml` pinnt auslösende Plugin-Releases und baut amd64/arm64.
+- Das Repository enthält keine Go-Dateien und installiert keine Go-Toolchain.
+- Bestehende Referenzkits dokumentieren Bitwarden, Jellyfin und Immich. Paperless ist verpflichtender V1-Fall; sein reales Hostskript, der Aufrufvertrag und der bekannte `${2}`-Fehler müssen vor dem DSL-Freeze als Fixture/Regression erfasst werden.
 
-1. `BeforeBackupCreatedEvent`
-2. Backup-Kern
-3. `AfterBackupCreatedEvent`
-4. Dauer-Speicherung in `finally`
+## 2. Verbindliche technische Konkretisierungen
 
-`AfterBackupCreatedEvent` wird bei Pre-, Dump-, Restic-, Check-, Snapshot- oder Stats-Fehlern nicht erreicht. Ein Agent-Plugin kann daher mit den vorhandenen Events kein garantiertes Finally implementieren.
+Diese Punkte schließen die bei der Codeanalyse gefundenen Designlücken.
 
-### 4.2 Minimale Facility-Erweiterung
+### 2.1 Facility-Event und Fehlerpriorität
 
-Neue Datei:
-
-- `MuckiFacilityPlugin/src/Events/BackupFinishedEvent.php`
-
-Eventdaten:
-
-- `BackupRepositorySettings`
-- Backup-Ergebnisse
-- `?Throwable` als Primärfehler oder eine serialisierbare Fehlerzusammenfassung
-- boolescher Kern-Erfolgsstatus
-
-Änderung:
-
-- `MuckiFacilityPlugin/src/Services/Backup.php::createBackup()`
-
-Zielstruktur:
+Neuer Contract:
 
 ```php
-$primaryError = null;
-try {
-    // bestehendes Before, Backup, After unverändert
-} catch (\Throwable $exception) {
-    $primaryError = $exception;
-} finally {
-    try {
-        $eventDispatcher->dispatch(new BackupFinishedEvent(...));
-    } catch (\Throwable $finishedError) {
-        if ($primaryError === null) {
-            $primaryError = $finishedError;
-        } else {
-            // loggen, Primärfehler nicht ersetzen
-        }
-    }
-    $repositoryStats->saveBackupDuration(...);
-}
-if ($primaryError !== null) {
-    throw $primaryError;
-}
-```
-
-Wichtig:
-
-- Existing Before/After-Namen und Semantik bleiben kompatibel.
-- Facility kennt keine Agent-Klassen.
-- Ohne Subscriber verursacht das neue Event nur einen EventDispatcher-Aufruf.
-- Ein Finished-Subscriber darf einen erfolgreichen Backup-Lauf fehlschlagen lassen, aber nie einen vorhandenen Primärfehler überschreiben.
-
-Tests im Facility-Plugin:
-
-- `tests/Services/LifecycleEventDispatchTest.php`
-- `tests/Services/BackupTest.php`
-
-Neue Fälle:
-
-- Finished nach Erfolg;
-- Finished nach Before-Fehler;
-- Finished nach Backup-Kernfehler;
-- Finished-Fehler bei erfolgreichem Kern wird geworfen;
-- Finished-Fehler überschreibt Kernfehler nicht;
-- Laufzeit wird weiterhin immer gespeichert.
-
-### 4.3 MuckiSafeAgentPlugin-Subscriber
-
-Neue Subscriber:
-
-- `Subscriber/FacilityBackupBeforeSubscriber`
-- `Subscriber/FacilityBackupAfterSubscriber`
-- `Subscriber/FacilityBackupFinishedSubscriber`
-
-Ablauf:
-
-- Before: Agent-Konfiguration prüfen, BackupRun anlegen, Pre-Job erstellen und abwarten.
-- After: aktiven BackupRun finden, Post-Job erstellen und abwarten.
-- Finished: aktiven BackupRun finden, Finally-Job immer erstellen und abwarten; Runstatus abschließen.
-
-Korrelation:
-
-- Facility hat weiterhin einen globalen Backup-Lock; dadurch gibt es pro MuckiSafe-Instanz nur einen aktiven Backup-Lauf.
-- `MuckiSafeAgentPlugin` persistiert beim Before-Event den aktiven Run anhand Facility-Repository-ID und Status.
-- After/Finished lösen den aktiven Run über Repository-ID auf.
-- Ein Unique-Index verhindert mehrere aktive Runs je Repository; ein zusätzlicher Service verhindert mehrere aktive Runs global.
-- Nach Prozessabbruch markiert ein Reaper verwaiste Runs und Jobs sichtbar als `unknown`/`expired`.
-
-## 5. Konfliktregel mit Facility-Legacy-Hooks
-
-Facility behält seine Batch-/PHP-Hooks. Für ein Repository gilt in V1 jedoch genau eines:
-
-- Facility Legacy-Hooks oder
-- MuckiSafeAgentPlugin-Hooks.
-
-Regeln:
-
-1. Beim Speichern einer Agent-Hook-Zuordnung liest MuckiSafeAgentPlugin die Facility-Repository-Einstellungen.
-2. Ist Pre oder Post dort nicht `none`, verweigert MuckiSafeAgentPlugin die Aktivierung und zeigt die betroffenen Felder an.
-3. Beim Before-Event wird dieselbe Prüfung erneut durchgeführt, bevor irgendeine Agent- oder Host-Seitenwirkung beginnt.
-4. Der Agent-Before-Subscriber erhält höhere Priorität als `BackupCommandSubscriber`, sodass ein Konflikt vor Legacy-Ausführung abbricht.
-5. Das Agent-Plugin verändert oder löscht Facility-Legacy-Werte niemals automatisch.
-6. Nach bewusster Migration setzt der Administrator die Facility-Hooks auf `none` und aktiviert anschließend Agent-Hooks.
-
-So bleiben normale Facility-Shops unverändert, während MuckiSafe keine Doppel-Ausführung riskiert.
-
-## 6. Zielbild und Kontrollfluss
-
-```text
-MuckiFacilityPlugin              MuckiSafeAgentPlugin                  MuckiAgent (root)
-───────────────────              ────────────────                  ─────────────────
-BeforeBackupCreatedEvent ──────► BackupRun + Pre-Job
-                                 Wakeup-Datei atomar ────────────► fsnotify
-                                                                   POST /jobs/claim
-                                 ◄──────────────────────────────── Job + Claim-Token
-                                                                   Action ausführen
-                                 ◄──────────────────────────────── Heartbeat/Complete
-                                 Jobterminalstatus abwarten
-Backup-Kern
-AfterBackupCreatedEvent ───────► Post-Job analog
-BackupFinishedEvent ───────────► Finally-Job immer
-                                 BackupRun abschließen
-Facility speichert Dauer
-```
-
-Der Agent pollt unabhängig von Semaphoren regelmäßig, empfohlen alle 10 Sekunden.
-
-## 7. Sicherheitsmodell
-
-### 7.1 Vertrauensgrenzen
-
-- Nur MuckiSafeAgentPlugin speichert Agent-Actions und -Jobs.
-- Facility-Repository-, DB- und S3-Secrets werden nicht kopiert.
-- Agent erhält keinen direkten MySQL-Zugang.
-- Semaphore enthält ausschließlich Job-UUID/Protokollversion.
-- Das einmalig angezeigte Credential liegt root-owned (`0600`) auf dem Host. Serverseitig wird der für HMAC benötigte Schlüssel verschlüsselt gespeichert; der Verschlüsselungsschlüssel liegt außerhalb der Datenbank.
-- Keine generische Shell-Primitive in V1.
-- HTTPS ist der Standard und wird für alle nicht vollständig vertrauenswürdigen Netze dringend empfohlen.
-- HTTP ist kein reiner Testmodus: Es kann explizit für isolierte LAN-, Docker-, VPN- oder vergleichbar kontrollierte Installationen aktiviert werden.
-- Bei HTTP bleiben HMAC, Timestamp, Nonce und Replay-Schutz zwingend. Sie schützen Integrität und Authentizität, aber nicht die Vertraulichkeit beobachtbarer Requests und Responses.
-- Der Agent verweigert eine `http://`-URL nur dann, wenn `allowInsecureHttp` nicht explizit gesetzt ist; bei aktivem HTTP protokolliert er bei jedem Start eine deutliche Warnung ohne Credentials.
-
-### 7.2 Agent-Authentisierung
-
-Headers:
-
-- `X-Mucki-Agent-Key`
-- `X-Mucki-Agent-Timestamp`
-- `X-Mucki-Agent-Nonce`
-- `X-Mucki-Agent-Signature`
-
-HMAC-Basis:
-
-```text
-METHOD + "\n" + PATH + "\n" + SHA256(BODY) + "\n" + TIMESTAMP + "\n" + NONCE
-```
-
-- HMAC-SHA256 mit 256-Bit-Secret unabhängig vom Transport;
-- HTTPS als Default und empfohlener Produktionsmodus;
-- HTTP nur mit `server.allowInsecureHttp: true`; die Option ist regulär dokumentiert und nicht auf Tests oder Debug-Builds beschränkt;
-- Zeitfenster ±60 Sekunden;
-- Nonce-Deduplizierung;
-- Provisionierung erzeugt genau ein zufälliges 256-Bit-Secret, das nur in der unmittelbaren Bestätigungsansicht angezeigt und danach nicht mehr ausgelesen werden kann;
-- Rotation erzeugt ein neues einmalig angezeigtes Secret und widerruft das alte nach einem expliziten Umschaltvorgang;
-- Widerruf bleibt jederzeit ohne Kenntnis des Secrets möglich;
-- keine normalen Admin-OAuth-Tokens für Agent-Routen.
-
-### 7.3 Root-Agent-Härtung
-
-- kein `sh -c`, `bash -c`, `eval`;
-- `exec.CommandContext` mit getrenntem argv und absoluten Executable-Pfaden;
-- minimale Environment-Allowlist;
-- lokale Alias-Policy für Container, Services, Pfade und URLs;
-- Action-/Parameterprüfung im Plugin und erneut im Agenten;
-- Prozessgruppe, SIGTERM, Grace Period, SIGKILL;
-- stdout/stderr begrenzen und redigieren;
-- `maxConcurrency=1` als Default;
-- lokales Idempotenzjournal;
-- Binary, Config und Journal root-owned.
-
-## 8. Deklaratives Aktionsmodell
-
-### 8.1 Action-Definition
-
-`muwa_agent_action.definition` ist LONGTEXT/JSON und enthält eine validierte DSL:
-
-```json
+final class BackupFinishedEvent extends Event
 {
-  "version": 1,
-  "steps": [
-    {
-      "type": "docker.container.exec",
-      "containerAlias": "immich-db",
-      "argv": ["pg_dump", "--clean", "--if-exists", "--dbname", {"parameter": "database"}],
-      "stdout": {
-        "type": "gzip-file",
-        "pathAlias": "immich-backups",
-        "nameTemplate": "immich-{runId}.sql.gz"
-      }
-    },
-    {
-      "type": "filesystem.acl.read",
-      "pathAliases": [{"parameter": "sourceAliases"}],
-      "uid": 33
-    }
-  ]
+    public const NAME = 'mucki_facility.backup.finished';
+
+    public function __construct(
+        private readonly BackupRepositorySettings $backupSettings,
+        private readonly array $results,
+        private readonly ?\Throwable $primaryError,
+        private readonly bool $coreSucceeded,
+    ) {}
+
+    public function getBackupSettings(): BackupRepositorySettings { return $this->backupSettings; }
+    /** @return array<ResultEntity> */
+    public function getResults(): array { return $this->results; }
+    public function getPrimaryError(): ?\Throwable { return $this->primaryError; }
+    public function isCoreSucceeded(): bool { return $this->coreSucceeded; }
 }
 ```
 
-Lokale Hostpolicy:
+Semantik:
 
-```yaml
-policies:
-  containers:
-    immich-db: immich_postgres
-    bitwarden-db: bitwarden-mssql
-  services:
-    jellyfin: jellyfin
-  paths:
-    immich-data: /srv/immich/upload
-    immich-backups: /srv/immich/upload/backups
+1. `Finished` wird genau einmal für jeden begonnenen `Backup::createBackup()`-Aufruf dispatcht.
+2. Lock-Kollisionen und Fehler vor `createBackup()` erzeugen kein Finished-Event.
+3. `coreSucceeded=true` bedeutet: Before, Backup-Kern und After waren erfolgreich. Ein späterer Finished-Fehler ändert dieses Feld nicht.
+4. Fehlerpriorität: bestehender Before-/Kern-/After-Fehler vor Finished-Fehler vor Fehler aus `saveBackupDuration()`.
+5. Untergeordnete Fehler werden geloggt; nach außen wird das höchstpriorisierte ursprüngliche Throwable erneut geworfen.
+6. Finished läuft innerhalb des globalen Facility-Locks.
+7. `allResults`, `checkFailure` und `dumpFailure` werden am Anfang jedes Laufs zurückgesetzt, damit lang laufende Worker keine Ergebnisdaten zwischen Läufen vermischen. Die bestehenden nicht-nullbaren Legacy-Properties `backupException` und `backup` sind nicht Teil des neuen Event-Outcomes und werden aus Rückwärtskompatibilitätsgründen in diesem Schritt weder umtypisiert noch über neue Getter-Verträge laufisoliert.
+8. Geplante Facility-Version für diesen Contract: `v0.11.0`. Erst deren tatsächliche Veröffentlichung erlaubt den finalen Composer-Constraint im AgentPlugin.
+
+### 2.2 Host-Zuordnung
+
+- Jede Repository-Hook-Zuordnung enthält genau einen `agent_host_id`.
+- Jeder Job materialisiert `target_agent_id`.
+- Ein Agent darf nur Jobs claimen, deren `target_agent_id` seiner authentisierten Host-ID entspricht.
+- Capabilities sind zusätzliche Validierung, keine Autorisierung und kein Ersatz für die Host-Zuordnung.
+
+### 2.3 Zustandsautomaten
+
+BackupRun:
+
+```text
+running -> succeeded | failed | unknown
 ```
 
-MuckiSafeAgentPlugin sendet nur Aliase und validierte Parameter.
+Job:
 
-### 8.2 V1-Primitives
+```text
+queued -> claimed -> running -> succeeded | failed | timed_out
+queued -> timed_out
+claimed (noch nie running) -> expired
+expired + idempotency=safe + attempts left + phase budget left -> queued
+expired + idempotency=non_retryable -> unknown
+running -> unknown (ausschließlich authentisierte `ambiguous`-Completion)
+running -> cancel_requested -> timed_out | unknown
+claimed (noch nie running) -> timed_out
+```
+
+- `partial_failure` ist **kein Jobstatus**, sondern ein `result_code` bei terminalem Status `failed`.
+- Der Agent sendet bei Completion ausschließlich das Outcome `succeeded`, `failed`, `timed_out` oder `ambiguous`. Der Server mappt `ambiguous` auf Status `unknown`; nur der Server schreibt Statuswerte in die Datenbank.
+- `expired` wird ausschließlich vom serverseitigen Reaper gesetzt. `unknown` entsteht entweder aus einem abgelaufenen non-retryable Job oder aus einer vom Agenten gemeldeten ambivalenten Wiederanlaufsituation.
+- Ein Job, der den Status `running` jemals erreicht hat, wird wegen Lease-Ablauf **nie** neu eingereiht – auch nicht bei `idempotency=safe`. Damit können alter und neuer Worker keine überlappenden Hostwirkungen erzeugen. Retry nach Lease-Ablauf ist nur für `claimed`, aber noch nie gestartete Jobs erlaubt.
+- Lease beginnt beim Claim, nicht erst bei `/start`: Initialdauer 30 Sekunden, Agent-Heartbeat alle 10 Sekunden, erfolgreiche Verlängerung jeweils auf `serverNow + 30s`, jedoch niemals über `executionDeadline`. `/start` muss vor Lease-Ablauf eintreffen.
+- Jede Mutation nach Claim prüft `target_agent_id`, SHA-256 des Claim-Tokens und `lease_version`.
+- In `claimed` und `running` muss zusätzlich `lease_expires_at > serverNow` gelten. In `cancel_requested` ist Lease-Heartbeat bis einschließlich `stop_deadline` und `timed_out`-/`ambiguous`-Completion bis einschließlich `phase_deadline` auch nach Lease-Ablauf zulässig; Agent-ID, Tokenhash und Lease-Version bleiben zwingend. Alles andere liefert 409.
+- Veraltete/falsche Claims liefern HTTP 409.
+- MySQL erzwingt höchstens einen aktiven BackupRun global über die nicht im DAL exponierte Spalte `active_guard TINYINT GENERATED ALWAYS AS (CASE WHEN status = 'running' THEN 1 ELSE NULL END) STORED` plus `UNIQUE KEY uniq_active_guard (active_guard)`.
+- Ein Integrationstest mit zwei DB-Verbindungen versucht gleichzeitig zwei `running`-Runs einzufügen; exakt einer darf committen.
+- V1 erzwingt `maxConcurrency=1` pro Agent doppelt: lokal durch einen Runner-Semaphor und serverseitig durch `active_agent_id BINARY(16) GENERATED ALWAYS AS (CASE WHEN status IN ('claimed','running','cancel_requested') THEN target_agent_id ELSE NULL END) STORED` plus `UNIQUE KEY uniq_active_agent (active_agent_id)`. Zwei parallele Claims desselben Agenten müssen genau einen aktiven Job ergeben; andere Agenten dürfen parallel arbeiten.
+
+### 2.4 Atomarer Claim
+
+- Kein DAL-Read-then-write.
+- Doctrine-DBAL-Transaktion mit `SELECT ... FOR UPDATE SKIP LOCKED`, gefiltert auf Ziel-Agent, `queued`, `available_at <= NOW()` und `execution_deadline > NOW()`.
+- Innerhalb derselben Transaktion: Versuch erhöhen, Claim-Token-Hash/Lease-Version/Lease-Ende setzen und Status auf `claimed` ändern.
+- `phase_deadline`, `execution_deadline = phase_deadline - 15s` und `stop_deadline = min(execution_deadline + 5s, phase_deadline - 10s)` werden bei Joberzeugung unveränderlich materialisiert. Claim ist nur vor `execution_deadline` zulässig; jede Claim-/Start-Lease endet bei `min(serverNow + 30s, execution_deadline)`. Ab `execution_deadline` beginnt keine neue Hostwirkung, spätestens an `stop_deadline` folgt SIGKILL, bis `phase_deadline` bleiben höchstens 10 Sekunden für Journal und Completion.
+- Requeue, Timeout, Unknown oder sonstiger Claim-Widerruf erhöhen `lease_version` atomar und verschieben den alten Tokenhash nur in unveränderliche Completion-Auditfelder.
+- 100 parallele Claim-Versuche mit zwei echten MySQL-Verbindungen müssen genau einen Gewinner ergeben.
+
+### 2.5 Request- und Response-Signaturen
+
+Request-Basis, UTF-8 und `\n` exakt:
+
+```text
+MUWA-HMAC-V1-REQUEST
+UPPERCASE_METHOD
+ROUTE_PATH_WITHOUT_QUERY
+LOWERCASE_HEX_SHA256_OF_RAW_BODY
+DECIMAL_UNIX_TIMESTAMP
+REQUEST_NONCE
+```
+
+Response-Basis:
+
+```text
+MUWA-HMAC-V1-RESPONSE
+DECIMAL_HTTP_STATUS
+ROUTE_PATH_WITHOUT_QUERY
+LOWERCASE_HEX_SHA256_OF_RAW_BODY
+REQUEST_NONCE
+DECIMAL_UNIX_TIMESTAMP
+```
+
+- Das einmalig angezeigte Base64url-Secret wird vor HMAC ohne Padding dekodiert und muss exakt 32 Bytes ergeben; niemals wird der dargestellte Text als HMAC-Key verwendet.
+- Der Basisstring besteht aus den oben gezeigten ASCII/UTF-8-Zeilen, LF (`0x0a`) ausschließlich zwischen Feldern und keinem abschließenden LF.
+- Jeder sicherheitsrelevante Header muss genau einmal vorkommen. Timestamp ist eine nichtnegative kanonische Dezimalzahl ohne `+` und ohne führende Nullen (außer `0`).
+- V1 akzeptiert zwei feste ASCII-Pfade (`/api/_action/muwa/agent/v1/heartbeat`, `/api/_action/muwa/agent/v1/jobs/claim`) und drei explizite Job-Pfadfamilien unter `/api/_action/muwa/agent/v1/jobs/{jobId}/{start|heartbeat|complete}`. `{jobId}` ist dabei exakt ein lowercase RFC-4122-UUID-Segment; signiert wird der unveränderte tatsächliche Pfad mit eingesetzter UUID. Query, Prozentkodierung, Backslash, Dot-Segmente, doppelte Slashes, zusätzliche Segmente und abweichende Schreibweise/Trailing-Slashes werden vor Controller-Ausführung abgelehnt.
+- Agent-Routen erlauben in V1 keine Query-Parameter.
+- Nonce: 32–64 Zeichen, `[A-Za-z0-9_-]+`.
+- Timestamp-Fenster ±60 Sekunden.
+- Der Go-Agent erzeugt Nonces ausschließlich mit `crypto/rand`. Der Replay-Eintrag läuft frühestens bei `requestTimestamp + 60s + 5s Cleanup-Toleranz` ab; Cleanup löscht nur `expires_at < serverNow`.
+- Request- und Response-HMAC: SHA-256 mit demselben Agent-Secret.
+- Response bindet sich an die Request-Nonce; nach erfolgreicher Key-Auflösung verwirft der Go-Agent bei HTTP **und** HTTPS jede fehlende oder ungültige Response-Signatur. Die einzige Ausnahme ist der unten definierte terminale Unknown-Key-Transportfehler ohne Nutzdaten.
+- Damit schützt HTTP Integrität und Authentizität beider Richtungen, aber weiterhin nicht Vertraulichkeit. Die dokumentierte Warnung bleibt.
+- Agent-Routen erhalten `auth_required=false`, werden jedoch ausnahmslos durch `AgentAuthenticationSubscriber` geschützt. `AgentResponseSigningSubscriber` signiert nach erfolgreicher Key-Auflösung auch alle Fehlerantworten.
+- Go-Konfiguration verwendet exakt `server.url` und `server.allowInsecureHttp`. `https://` ist ohne Zusatzflag zulässig; `http://` wird nur mit `allowInsecureHttp: true` akzeptiert und erzeugt bei jedem Start die dokumentierte Warnung. Eine `skipTlsVerify`-Option existiert in V1 nicht.
+
+Versionierter Wire-Contract:
+
+| Route-Name | Methode/Pfad | Controller-Methode |
+|---|---|---|
+| `api.action.muwa.agent.v1.host_heartbeat` | `POST /api/_action/muwa/agent/v1/heartbeat` | `HostHeartbeatController::heartbeat()` |
+| `api.action.muwa.agent.v1.job_claim` | `POST /api/_action/muwa/agent/v1/jobs/claim` | `JobClaimController::claim()` |
+| `api.action.muwa.agent.v1.job_start` | `POST /api/_action/muwa/agent/v1/jobs/{jobId}/start` | `JobStartController::start()` |
+| `api.action.muwa.agent.v1.job_heartbeat` | `POST /api/_action/muwa/agent/v1/jobs/{jobId}/heartbeat` | `JobHeartbeatController::heartbeat()` |
+| `api.action.muwa.agent.v1.job_complete` | `POST /api/_action/muwa/agent/v1/jobs/{jobId}/complete` | `JobCompleteController::complete()` |
+
+Alle fünf Routen besitzen `_routeScope=[\"api\"]`, `auth_required=false`, erlauben ausschließlich `POST` und werden vor Controller-Aufruf durch `AgentAuthenticationSubscriber` auf `KernelEvents::REQUEST` mit Priorität `256` geschützt. `AgentResponseSigningSubscriber` signiert auf `KernelEvents::RESPONSE` mit Priorität `-256`; auf `KernelEvents::EXCEPTION` wird nach erfolgreicher Key-Auflösung zunächst eine stabile JSON-Fehlerantwort erzeugt, die anschließend denselben Response-Signer durchläuft. Container-/Routentests prüfen jede Route, Methode, Defaults, Tags, Prioritäten, Query-Verbot sowie signierte Controller- und Exception-Antworten. Fehlende Auth-/Signing-Subscriber-Tags lassen den Test fehlschlagen.
+
+Request-Header:
+
+```text
+Content-Type: application/json
+Accept: application/json
+X-Mucki-Agent-Key: <public key id>
+X-Mucki-Agent-Timestamp: <unix seconds>
+X-Mucki-Agent-Nonce: <base64url nonce>
+X-Mucki-Agent-Signature: <lowercase hex HMAC>
+```
+
+Die Host-ID wird serverseitig ausschließlich aus `X-Mucki-Agent-Key` aufgelöst; der Client darf keine abweichende Agent-ID behaupten. Response-Header:
+
+```text
+Content-Type: application/json
+X-Mucki-Agent-Timestamp: <unix seconds>
+X-Mucki-Agent-Request-Nonce: <request nonce>
+X-Mucki-Agent-Signature: <lowercase hex HMAC>
+```
+
+Erfolgs- und authentisierte Fehlerantworten verwenden stabile DTOs beziehungsweise `{"code":"MUWA_AGENT_*","message":"...","traceId":"<uuid>"}`. Ist `X-Mucki-Agent-Key` unbekannt oder so fehlerhaft, dass kein Secret ermittelt werden kann, ist exakt eine unsignierte 401-Antwort mit leerem Body erlaubt. Der Go-Agent akzeptiert sie ausschließlich als terminalen, unauthentisierten Transport-/Authentisierungsfehler, liest daraus keine Semantik und verarbeitet niemals Job- oder Actiondaten. Alle Antworten nach erfolgreicher Key-Auflösung – einschließlich 4xx/5xx – müssen signiert sein. Gemeinsame PHP-/Go-Fixtures decken jeden Header, DTO, Status und Fehlercode ab.
+
+V1-DTO-Felder, jeweils `additionalProperties=false`:
+
+- Hostheartbeat Request `{agentVersion, platform:"linux", arch, capabilities[], agentTime}`; Response `{serverTime, pollAfterSeconds}`.
+- Claim Request `{maxJobs:1}`; Response `{job:null|{id, claimToken, leaseVersion, leaseExpiresAt, phaseDeadline, executionDeadline, stopDeadline, phase, idempotencyClass, action:{definitionCanonical, actionHash}, parameters}}`.
+- Start Request `{claimToken, leaseVersion}`; Response `{leaseVersion, leaseExpiresAt, phaseDeadline, executionDeadline, stopDeadline}`.
+- Lease-Heartbeat Request `{claimToken, leaseVersion}`; Response `{leaseVersion, leaseExpiresAt, stopRequested, stopDeadline?}`.
+- Completion Request `{claimToken, leaseVersion, outcome, resultCode, summary, stdoutTail?, stderrTail?, stdoutEncoding?, stderrEncoding?}`; Response `{accepted:true, terminalStatus}`.
+- UUIDs sind lowercase RFC-4122-Strings; Zeiten sind UTC/RFC 3339 mit Sekundenauflösung; unbekannte Enumwerte werden mit `MUWA_AGENT_PROTOCOL_UNSUPPORTED` abgelehnt.
+- Die vollständigen JSON-Schemas liegen versioniert unter `resources/schema/protocol/v1/`; PHP und Go generieren/validieren dagegen nicht unabhängig erfundene DTOs.
+
+Rohbody-Limits vor JSON-Dekodierung: Hostheartbeat 16.384 Bytes, Claim 1.024 Bytes, Start 4.096 Bytes, Lease-Heartbeat 4.096 Bytes, Completion 262.144 Bytes. Der Server hasht einen zu großen Body streaming weiter, ohne ihn vollständig zu puffern, authentisiert die Signatur und liefert danach eine signierte 413 `MUWA_AGENT_BODY_TOO_LARGE`; vor erfolgreicher Key-Auflösung bleibt der definierte unsignierte 401-Fall bestehen. Gemeinsame PHP-/Go-Fixtures und Routentests decken jedes Limit exakt an Grenze und Grenze+1 ab.
+
+Der vorgeschaltete Webserver/PHP-FPM setzt zusätzlich einen absoluten Transport-Hardcap von 270.336 Bytes und einen 15-Sekunden-Request-Read-Timeout. Eine Überschreitung darf als unsignierter Transportabbruch enden und wird vom Agenten – außer dem exakt definierten leeren Unknown-Key-401 – nie vertraut. Innerhalb dieses Caps liest/spoolt der früh laufende Auth-Layer den Rohbody genau einmal begrenzt, hasht und authentisiert ihn vor jeder JSON-Dekodierung. `Content-Encoding`, mehrere `Content-Length`-Header sowie gleichzeitiges `Content-Length` und `Transfer-Encoding` werden abgelehnt. Agent-Routen senden `Cache-Control: no-store`; Reverse-Proxy-/APM-Bodylogging ist für diese Routen zu deaktivieren.
+
+### 2.6 Secret-Speicherung und Rotation
+
+- Provisionierung erzeugt `random_bytes(32)`, Base64url ohne Padding, zeigt es genau einmal und speichert nie Klartext.
+- Server speichert Secret authentisiert verschlüsselt mit sodium secretbox.
+- Versionierter Keyring: `MUWA_AGENT_ENCRYPTION_KEYRING` enthält `{\"active\":<positive int>,\"keys\":{\"<version>\":\"<64 hex chars>\"}}`, liegt außerhalb der DB, wird in `app` und `scheduler` identisch gesetzt und niemals über DAL/API ausgegeben. Jeder Schlüssel wird auf exakt 32 dekodierte Bytes geprüft.
+- DB-Felder: `secret_ciphertext`, `secret_nonce`, `secret_key_version`.
+- Unbekannte oder fehlende Key-Versionen sind fail-closed. Master-Key-Rotation fügt zuerst eine neue aktive Version hinzu, re-encryptet Secrets transaktional und wiederaufnehmbar mit Readback-Prüfung und entfernt alte Schlüssel erst, wenn kein Datensatz mehr darauf verweist.
+- V1-Rotation ist bewusst sofortig: neues Secret wird einmal angezeigt und ersetzt atomar das alte. Das alte Secret ist unmittelbar ungültig. Verlorene Anzeige wird durch erneute Rotation behoben; überlappende current/next-Credentials sind Nicht-Ziel von V1.
+- Widerruf setzt `revoked_at`; danach sind alle Requests 401.
+
+### 2.7 Action-Definition und Hash
+
+- Erlaubte JSON-Werte: Objekt, Array, String, Integer, Boolean, Null; keine Floats.
+- PHP sortiert Objektschlüssel rekursiv, erhält Array-Reihenfolge und speichert die kompakte kanonische UTF-8-Zeichenkette.
+- API liefert `definitionCanonical` als String und `actionHash=sha256(definitionCanonical)`.
+- Go prüft den Hash über exakt diese empfangenen String-Bytes und parst erst danach.
+- Dadurch wird keine sprachübergreifende implizite JSON-Serialisierung vorausgesetzt.
+- Eine Action enthält geordnete Steps und bricht beim ersten Fehler ab.
+- V1 führt keine implizite Kompensation aus. Wurden bereits Steps ausgeführt, lautet der Resultcode `partial_failure`.
+- Parameter sind typisiert. Keine freie Template-Sprache, keine Shell, kein `eval`; Pfadparameter dürfen weder absolut sein noch `..`/NUL enthalten und dürfen Alias-Wurzeln nicht über Symlinks verlassen.
+
+Verbindliche Primitive-Policy vor Implementierung:
+
+| Primitive | Eingaben aus der Action | Ausschließlich lokale Policy | Ausführungsgrenzen |
+|---|---|---|---|
+| `service.control` | `serviceAlias`, `operation=start|stop|restart` | Alias → exakter systemd-Unitname, Timeout | nur `/usr/bin/systemctl --no-ask-password`; Status danach prüfen; keine Unitnamen aus Parametern |
+| `service.wait-http` | `endpointAlias`, erwartete Statusmenge | Alias → vollständige HTTP(S)-URL, Intervall, Timeout, erlaubte IP-Bereiche | Userinfo/Fragment/Redirects verboten; geprüfte IP wird für den tatsächlichen Dial gepinnt, bei HTTPS bleiben SNI/Zertifikatsprüfung auf dem Policy-Host; bei jeder neuen Verbindung neu auflösen/prüfen; Body begrenzt verwerfen |
+| `docker.container.exec` | `containerAlias`, `commandAlias`, typisierte Argumentwerte | Containername und Command-Alias → feste argv-Präfixe/Argumentregeln | nur `/usr/bin/docker exec`; kein Shell-Entry-Point, kein frei wählbares Executable/Containerziel |
+| `filesystem.acl.read` | `pathAlias`, `principalAlias`, optional relativer Unterpfad | Alias-Wurzel, UID/GID, Rekursions- und Dateilimit | ACL nur auf descriptor-relativ geöffneten Zielen; keine numerische UID/GID aus der Action |
+| `filesystem.assert-readable` | `pathAlias`, `principalAlias`, relative Pfade | Alias-Wurzel und Principal | descriptor-relativer Walk, keine Symlinks/Magiclinks, harte Objektzahlgrenze |
+| `file.write-pipeline` | `sourceCommandAlias`, `destinationAlias`, feste Transformliste, Run-ID | Quell-argv, Zielwurzel, Dateimode/Owner, Maximalgröße | temp mit `O_CREAT|O_EXCL`, Datei-`fsync`, `renameat2(..., RENAME_NOREPLACE)`, Zielverzeichnis-`fsync`; kein Überschreiben; gzip in Go statt Shellpipe |
+| `file.retention` | `pathAlias`, fester Präfix/Suffix, Anzahl | Zielwurzel und maximales Keep-Limit | nur durch `file.write-pipeline` in einem rootgeschützten fsync-durablen Manifest erfasste Dateien; Manifest bindet Alias, relativen Namen, Device/Inode und Run-ID; unmittelbar vor `unlinkat` descriptor-relatives `fstatat(AT_SYMLINK_NOFOLLOW)`, Device/Inode-Abgleich und Linkzahl 1; nicht manifestierte/manipulierte Treffer nie löschen |
+
+- Linux-Dateioperationen verwenden `openat2(2)` über `golang.org/x/sys/unix` mit `RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS`; Mutationen erfolgen descriptor-relativ. Ein bloßer `filepath.Clean`-/`EvalSymlinks`-Vorabcheck ist unzulässig.
+- Externe Werkzeuge erhalten nach sicherem Öffnen ausschließlich stabile `/proc/self/fd/<n>`-Ziele; rekursive ACL-Arbeit iteriert descriptor-relativ und begrenzt Objektzahl/Tiefe.
+- Policy, Config, Secret, Journal-State und ihre gesamte Elternkette werden descriptor-relativ, symlinkfrei geöffnet. Jeder FD wird per `fstat` auf erwarteten Typ, `root:root` und fehlende Gruppen-/Weltschreibbarkeit geprüft; Config/Secret höchstens `0600`. Policy wird ausschließlich aus dem bereits geprüften FD als unveränderlicher Snapshot geladen; jeder Reload wiederholt denselben atomaren Ablauf. Andernfalls startet der Agent nicht.
+- Gemeinsame negative Tests erzwingen Ablehnung bei Symlink-Tausch während der Operation, `..`, NUL, absoluten Unterpfaden, unbekannten Units/Containern/Commands, HTTP-Redirects, zu großen Walks und nicht erlaubten Executables.
+
+### 2.8 Output
+
+- Agent redigiert bekannte Secretwerte vor der Begrenzung.
+- Byte-Tail, nicht Zeichenlimit: maximal 65.536 Bytes je Stream.
+- Nicht valides UTF-8 wird Base64-kodiert und entsprechend markiert.
+- `succeeded`: keine stdout-/stderr-Felder übertragen oder speichern.
+- `failed` und `timed_out`: Tails erlaubt; `partial_failure` ist dabei ein `result_code` unter Status `failed`.
+- Outcome `ambiguous`/Status `unknown` überträgt nur einen begrenzten strukturierten Grund, keine alten Tails. `expired` entsteht ohne Agent-Completion und erhält keine Tails.
+- Completion-Requestlimit: exakt 262.144 rohe HTTP-Bytes, geprüft **vor** JSON-Dekodierung. Nach Base64-Dekodierung gelten weiterhin 65.536 Bytes je Stream. DB-Felder sind `MEDIUMTEXT`, der Service erzwingt die kleineren fachlichen Grenzen.
+- Fehler-Tails werden 30 Tage nach `finished_at` durch den Cleanup-Task auf `NULL` gesetzt; Resultcode und redigierte Summary bleiben erhalten.
+- Bei HTTP sind Actiondefinition, Parameter und Fehler-Tails trotz Signatur mitlesbar. Diese fehlende Vertraulichkeit steht ausdrücklich in Startwarnung, README und Admin-Konfiguration.
+- `summary` und strukturierte Ambiguous-Gründe sind UTF-8 und auf 4.096 Bytes begrenzt; `resultCode` stammt aus einer versionierten Allowlist und ist höchstens 64 ASCII-Zeichen lang. Streaming-Redaction erkennt Secrets auch über Chunkgrenzen, redigiert vor der Tail-Bildung und wendet danach das Byte-Limit erneut an.
+
+### 2.9 Wakeup
+
+- Global und flach: Host `/var/lib/mucki-agent/wakeup`, Container `/var/run/mucki-agent/wakeup`.
+- Datei `<job-uuid>.ready`, atomarer Rename aus `.tmp` im selben Verzeichnis.
+- Wakeup erst nach erfolgreichem Job-Commit.
+- Go-Watcher löscht keine Dateien. Jedes passende Event stößt nur einen API-Poll an.
+- PHP-Cleanup entfernt Dateien älter als 24 Stunden.
+- Regelmäßiges Polling bleibt autoritativ; verlorene/duplizierte Events sind unschädlich.
+
+### 2.10 Agent-Journal
+
+- JSON-Datei pro Job unter `/var/lib/mucki-agent/state/jobs/`, atomar über temp + `fsync` + Rename.
+- Schlüssel: Job-ID, Action-Hash, Lease-Version.
+- Vor erster Hostwirkung Status `started` persistieren.
+- Nach Hostwirkung Ergebnis als `completed` persistieren, bevor Completion gesendet wird.
+- Neustart bei `completed`: nur Completion wiederholen.
+- Neustart bei `started` und `non_retryable`: keine Hostwirkung wiederholen; Completion-Outcome `ambiguous` senden, das der Server auf Status `unknown` mappt.
+- Neustart bei `started` und `safe`: Ausführung darf wiederholt werden.
+- Genau-einmal-Ausführung wird ausdrücklich nicht versprochen; Ambiguität wird sichtbar statt geraten.
+- State-Verzeichnis und Eltern werden beim Start descriptor-relativ und symlinkfrei geprüft. Journal-Temps entstehen per dirfd/`openat2`, `O_CREAT|O_EXCL|O_NOFOLLOW`, Mode `0600` und Zufallsnamen; Datei und nach dem Rename das Verzeichnis werden `fsync`-t. Beim Lesen werden regulärer Typ, Owner, Mode, Linkzahl 1, Job-ID, Action-Hash und Lease-Version geprüft. Beschädigte/manipulierte Journale führen fail-closed zu `ambiguous`, niemals zu erneuter Hostwirkung.
+
+### 2.11 Phasenbudgets und Lock-Dauer
+
+- `pre` und `post`: Default 600 Sekunden, serverseitiges Maximum je 1.800 Sekunden.
+- `finally`: Default 180 Sekunden, serverseitiges Maximum 600 Sekunden; dieses Budget ist unabhängig reserviert und wird nie durch Pre/Post verbraucht.
+- Jede Phase materialisiert unveränderlich DB `phase_deadline` ↔ Wire `phaseDeadline`, DB `execution_deadline = phase_deadline - 15s` ↔ Wire `executionDeadline` und DB `stop_deadline = min(execution_deadline + 5s, phase_deadline - 10s)` ↔ Wire `stopDeadline`. Es gibt kein zusätzliches `deadline_at`/`deadlineAt`. Die letzten 15 Sekunden bestehen aus höchstens 5 Sekunden SIGTERM-Grace bis `stopDeadline`, danach SIGKILL und bis zu 10 Sekunden für Journal/Completion.
+- Der Agent prüft die signierte `executionDeadline` vor **jedem** Step und jeder externen Prozessausführung. Er startet nach Erreichen dieser Frist keine neue Hostwirkung. Laufende Prozessgruppen erhalten SIGTERM, nach höchstens 5 Sekunden SIGKILL; der Agent journalisiert `timed_out` vor der Completion.
+- Unabhängig von Heartbeats erzwingt der Agent die Deadline über einen lokalen monotonic timer, kalibriert mit `serverTime`. `stopRequested=true` verlangt sofortiges SIGTERM; das mitgelieferte `stopDeadline` darf höchstens `min(serverNow+5s, materializedStopDeadline)` sein und verlängert keine materialisierte Grenze.
+- Bei `phaseDeadline - 15s` setzt der Server `queued` und `claimed` (noch nie gestartet) direkt auf `timed_out` und widerruft deren Claim. Nur `running` wechselt atomar auf `cancel_requested`.
+- In `cancel_requested` bleibt derselbe Token/dieselbe Lease ausschließlich für Lease-Heartbeat bis einschließlich `stop_deadline` und Timeout-/Ambiguous-Completion bis einschließlich `phase_deadline` gültig. Der Heartbeat verlängert die Lease nicht mehr, liefert aber signiert `stopRequested=true` und das effektive `stopDeadline`. `/start`, normale Success-/Failure-Completion und alle anderen Mutationen liefern 409. Erst bei Timeout-/Ambiguous-Completion oder endgültiger Phase-Deadline wird die Lease-Version erhöht und der Claim vollständig widerrufen.
+- `JobWaiter` endet nicht bei bloßem Lease-Ablauf. Bei einem noch nie gestarteten safe Job folgt er dessen Requeue/neu erzeugtem Claim bis zu einem terminalen Zustand oder bis zur Phase-Deadline. Bei einem jemals gestarteten Job wartet er auf Timeout-Completion; fehlt diese bei Phase-Deadline, setzt der Server konservativ `unknown` und beendet den Waiter.
+- Offline-Agent/API-Fehler dürfen das Budget nicht verlängern. Nach Rückkehr des Waiters verhindert die lokal signierte Deadline jeden neuen Step; uninterruptible Linux-D-State-Prozesse können technisch nicht garantiert beendet werden und führen sichtbar zu `unknown`, niemals zu automatischem Requeue.
+- Der Facility-Kern selbst besitzt weiterhin sein eigenes Backup-Zeitverhalten. Die zusätzlich unter dem globalen Lock verbrachte Agent-Wartezeit ist pro Phase hart begrenzt; ein Test misst diese Obergrenzen mit injizierter Uhr statt realem Warten.
+- Nach einem Pre-/Core-/Post-Fehler wird `finally` mit seinem separaten Budget versucht. Ein vorhandener Primärfehler bleibt nach Ablauf/Fehler von Finally prioritär.
+
+## 3. Zielstruktur
+
+```text
+MuckiSafeAgentPlugin/
+├── composer.json
+├── phpunit.xml.dist
+├── .gitattributes
+├── README.md
+├── docs/design.md
+├── docs/implementation-plan.md
+├── resources/schema/action-v1.schema.json
+├── resources/schema/parameters-v1.schema.json
+├── examples/actions/{bitwarden,jellyfin,immich,paperless}.json
+├── examples/policies/linux-host.yaml
+├── src/MuckiSafeAgentPlugin.php
+├── src/Migration/Migration1795132800CreateAgentSchema.php
+├── src/Core/Content/{AgentHost,AgentAction,AgentRepositoryHook,AgentBackupRun,AgentJob,AgentNonce}/
+├── src/Core/Job/{JobStatus,JobPhase,IdempotencyClass}.php
+├── src/Controller/Api/
+├── src/Controller/Admin/
+├── src/Service/{Action,Auth,Hook,Job,Plugin,Secret,Wakeup}/
+├── src/Subscriber/
+├── src/ScheduledTask/
+├── src/Resources/config/{services.xml,routes.xml}
+├── src/Resources/app/administration/src/
+├── tests/{Unit,Integration,Fixtures,E2E}/
+├── agent/go.mod
+├── agent/cmd/mucki-agent/main.go
+├── agent/internal/{action,agent,api,config,executor,idempotency,policy,primitives,version,wakeup}/
+├── agent/packaging/systemd/mucki-agent.service
+├── agent/packaging/{install.sh,uninstall.sh}
+└── .github/workflows/{php-tests,go-tests,e2e-linux,agent-release,plugin-release}.yml
+```
+
+`composer.json` und `.gitattributes` schließen `agent/`, `tests/`, `.github/` und Entwicklungsartefakte aus dem Plugin-Distributionsarchiv aus. Der Quell-Tag enthält weiterhin beide Komponenten.
+
+## 4. Implementierungsaufgaben
+
+### Task 0: Design und Implementierungsplan trennen und normativ angleichen
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Move: `docs/implementation-plan.md` → `docs/design.md`
+- Create: `docs/implementation-plan.md` aus diesem Dokument
+
+**Steps:**
+1. `git mv docs/implementation-plan.md docs/design.md`.
+2. Diesen Plan als neues `docs/implementation-plan.md` ablegen.
+3. `docs/design.md` als nicht-normative Architektur-/Entscheidungsbeschreibung kennzeichnen und am Anfang auf `docs/implementation-plan.md` als alleinigen normativen V1-Ausführungs-, Protokoll- und Testvertrag verweisen.
+4. Design vollständig gegen Abschnitt 2 abgleichen: sofortige Secret-Rotation ohne current/next-Umschaltmodell; keine Requeue nach jemals erreichtem `running`; versionierte fünf Routen; Request- **und** Response-HMAC; Ziel-Agent und `maxConcurrency=1`; Lease-/Heartbeat-/Deadline-/Cancellation-Werte; Resultcode-vs.-Status-Modell; Outputlimits/Retention; globaler flacher Wakeup-Pfad. Widersprechende alte Detailverträge werden entfernt statt parallel stehen gelassen.
+5. Ein Dokumenttest sucht in `docs/design.md` nach den verworfenen Contracts/Routen und prüft den Präzedenz-Link; ein manueller Spec-Review bestätigt, dass beide Dokumente keine konkurrierenden normativen Aussagen enthalten.
+6. Links und Titel prüfen und `git diff --check` ausführen.
+7. Commit: `docs: split and align architecture and implementation plans`.
+
+**Eingangsgate:** Task 0, Dokumenttest und unabhängiger Spec-Review müssen grün sein, bevor Task 1 beginnt.
+
+### Task 1: Facility-Laufzustand isolieren
+
+**Repository:** `MuckiFacilityPlugin`
+
+**Files:**
+- Modify: `src/Services/Backup.php`
+- Modify: `tests/Services/BackupTest.php`
+
+**RED:** Zwei aufeinanderfolgende `createBackup()`-Aufrufe auf derselben Serviceinstanz dürfen im zweiten Lauf keine Werte aus `allResults`, `checkFailure` oder `dumpFailure` des ersten Laufs enthalten.
+
+**GREEN:** Private Methode `resetRunState(): void` am Anfang von `createBackup()` aufrufen und genau `allResults=[]`, `checkFailure=null`, `dumpFailure=null` setzen. Die heute nicht-nullbaren Properties `backupException` und `backup` werden in diesem neutralen Facility-Schritt nicht umtypisiert; ihr bestehendes Getter-Verhalten bleibt unverändert.
+
+**Verify:**
+```bash
+./vendor/bin/phpunit --configuration="custom/plugins/MuckiFacilityPlugin" \
+  custom/plugins/MuckiFacilityPlugin/tests/Services/BackupTest.php
+```
+
+**Commit:** `fix(backup): isolate state between sequential runs`
+
+### Task 2: Neutralen Facility-Eventvertrag hinzufügen
+
+**Repository:** `MuckiFacilityPlugin`
+
+**Files:**
+- Create: `src/Events/BackupFinishedEvent.php`
+- Create: `tests/Events/BackupFinishedEventTest.php`
+
+**RED:** Die exakten Methoden `getBackupSettings(): BackupRepositorySettings`, `getResults(): array` (`array<ResultEntity>`), `getPrimaryError(): ?Throwable` und `isCoreSucceeded(): bool` liefern dieselbe Settings-/Throwable-Instanz beziehungsweise dasselbe in Inhalt/Reihenfolge unveränderte Result-Array; `NAME` ist stabil.
+
+**GREEN:** Nur die Event-Datenklasse implementieren, keine Agent-Abhängigkeit und keine Service-Registrierung.
+
+**Commit:** `feat(events): add neutral backup finished event`
+
+### Task 3: Facility-Erfolgspfad und Reihenfolge
+
+**Repository:** `MuckiFacilityPlugin`
+
+**Files:**
+- Modify: `src/Services/Backup.php::createBackup()`
+- Modify: `tests/Services/LifecycleEventDispatchTest.php`
+
+**RED:** Reihenfolge `before`, `after`, `finished`; Finished enthält Settings/Results, `primaryError=null`, `coreSucceeded=true`.
+
+**GREEN:** Finished im bestehenden äußeren Ablauf nach After und vor Dauer-Speicherung dispatchen.
+
+**Commit:** `feat(backup): dispatch finished event after successful run`
+
+### Task 4: Facility-Fehlerpfade und vollständige Fehlerpriorität
+
+**Repository:** `MuckiFacilityPlugin`
+
+**Files:**
+- Modify: `src/Services/Backup.php`
+- Modify: `tests/Services/LifecycleEventDispatchTest.php`
+- Modify: `tests/Services/BackupTest.php`
+- Modify: `README.md`
+- Modify: `composer.json` (`version` auf `v0.11.0`)
+
+**RED-Fälle:**
+- Before-, Kern- und After-Fehler: kein After nach früherem Fehler, Finished genau einmal, identisches Primary-Throwable.
+- Finished-Fehler nach Erfolg wird geworfen.
+- Finished-Fehler ersetzt keinen vorhandenen Primärfehler.
+- Dauerfehler ersetzt weder Primär- noch Finished-Fehler.
+- Dauer wird auch bei Primär-/Finished-Fehler genau einmal versucht.
+- Gleichzeitig Primär-, Finished- und Dauerfehler: exakt das ursprüngliche Primär-Throwable wird geworfen, beide untergeordneten Fehler werden geloggt. Ohne Primärfehler hat Finished Vorrang vor Dauer.
+
+**GREEN:** Fehler sammeln, untergeordnete Fehler loggen und nach Cleanup den höchstpriorisierten Fehler erneut werfen.
+
+**Regression:** Legacy-Subscriber, `BackupExecution`-Lock und bestehende Lifecycle-Tests unverändert grün.
+
+**Verify:**
+```bash
+./vendor/bin/phpunit --configuration="custom/plugins/MuckiFacilityPlugin" \
+  custom/plugins/MuckiFacilityPlugin/tests/Events/BackupFinishedEventTest.php \
+  custom/plugins/MuckiFacilityPlugin/tests/Services/LifecycleEventDispatchTest.php \
+  custom/plugins/MuckiFacilityPlugin/tests/Services/BackupTest.php \
+  custom/plugins/MuckiFacilityPlugin/tests/Subscriber/BackupCommandSubscriberTest.php \
+  custom/plugins/MuckiFacilityPlugin/tests/Schedule/BackupExecutionTest.php
+./vendor/bin/phpunit --configuration="custom/plugins/MuckiFacilityPlugin"
+composer --working-dir=custom/plugins/MuckiFacilityPlugin run-script phpstan
+composer --working-dir=custom/plugins/MuckiFacilityPlugin validate --strict
+test "$(php -r '$p=json_decode(file_get_contents("custom/plugins/MuckiFacilityPlugin/composer.json"), true); echo $p["version"];')" = v0.11.0
+```
+
+**Commit:** `feat(backup): guarantee finished lifecycle on failures`
+
+**Gate:** Facility `v0.11.0` veröffentlichen und tatsächlichen Packagist-Constraint bestätigen, bevor Task 5 gemergt wird.
+
+### Task 5: AgentPlugin-Skeleton und Testharness
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `composer.json`, `phpunit.xml.dist`, `.gitignore`, `.gitattributes`, `README.md`
+- Create: `src/MuckiSafeAgentPlugin.php`
+- Create: `src/Service/Plugin/FacilityDependencyGuard.php`
+- Create: `src/Exception/FacilityDependencyException.php`
+- Create: `src/Resources/config/services.xml`, `routes.xml`
+- Create: `tests/bootstrap.php`
+- Create: `tests/Integration/run-shopware.sh`
+- Create: `tests/Unit/Service/Plugin/FacilityDependencyGuardTest.php`
+- Create: `tests/Integration/Plugin/PluginBootTest.php`
+
+**RED:** Plugin aktiviert nur mit installierter/aktiver Facility-Version ab `v0.11.0`; fehlend, inaktiv oder zu alt erzeugt klaren Aktivierungsfehler. Wird Facility später deaktiviert, wechseln Agent-Admin/API/Subscriber fail-closed in Zustand `facility_unavailable`, erzeugen keine neuen Jobs und zeigen einen Health-Fehler; bestehende Jobs werden nicht gelöscht. Dokumentierter Lifecycle verlangt: AgentPlugin zuerst deaktivieren/deinstallieren, Facility danach. Composer verhindert das Entfernen des Facility-Pakets, solange AgentPlugin installiert ist.
+
+**GREEN:** Composer-Paket `muckiware/mucki-safe-agent-plugin`, PSR-4, Shopware-Metadaten, sodium-Anforderung und minimaler Guard. Der Integrationstest-Harness startet MySQL 8.0/8.4, checkt die jeweilige unterstützte `shopware/production`-Version aus, legt Facility und AgentPlugin unter `custom/plugins/` ab, führt `composer install`, `system:install`, `plugin:refresh`, `plugin:install --activate` aus und startet PHPUnit vom Shopware-Root mit der Plugin-Konfiguration. Unit-Skripte dürfen im Plugin laufen; DAL-/Migration-/Route-/Boot-Tests laufen ausschließlich in diesem installierten Shopware-Kontext. Arbeitsverzeichnis, DB-Variablen und Matrixwerte werden in `php-tests.yml` und `tests/bootstrap.php` identisch festgelegt.
+
+**Composer scripts:** `test:unit`, `test:integration`, `test`, `phpstan`.
+
+**Verify:**
+```bash
+composer validate --strict
+composer install --no-interaction --prefer-dist
+composer test:unit
+tests/Integration/run-shopware.sh --shopware v6.6.10.25 --mysql 8.0
+tests/Integration/run-shopware.sh --shopware v6.7.14.1 --mysql 8.4
+```
+
+**Commit:** `feat: scaffold MuckiSafeAgentPlugin`
+
+### Task 6: Grundschema und Uninstall
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Migration/Migration1795132800CreateAgentSchema.php`
+- Create all DAL classes under `src/Core/Content/`
+- Create enums under `src/Core/Job/` and `src/Core/Run/`
+- Create: `tests/Integration/Migration/AgentSchemaTest.php`
+- Create: `tests/Integration/Plugin/UninstallTest.php`
+
+**Schema:** `muwa_agent_host`, `muwa_agent_action`, `muwa_agent_repository_hook`, `muwa_agent_backup_run`, `muwa_agent_job`, `muwa_agent_nonce`; eigene FKs erlaubt, kein FK auf Facility-Tabellen. Hook enthält `agent_host_id`; Job enthält `target_agent_id`, unveränderliche `phase_deadline`/`execution_deadline`, `stop_deadline`, Completion-Fingerprint sowie Auditfelder für vorherigen Tokenhash/Lease-Version. Generated `active_guard` erzwingt einen global aktiven Run; generated `active_agent_id` erzwingt `maxConcurrency=1` je Agent.
+
+**RED:** Spalten, Indizes, FK-Regeln, UNIQUE `(facility_repository_id, phase)`, exaktes `active_guard`-/`active_agent_id`-DDL, paralleler Running-Insert sowie zwei parallele aktive Jobs desselben Agenten über echte DB-Verbindungen, Parallelität verschiedener Agenten und `keepUserData`-Semantik.
+
+**GREEN:** Eine initiale Migration; DAL exponiert Secret/Claim-Hash/generated guard nicht über normale API.
+
+**Commit:** `feat(storage): add agent control-plane schema`
+
+### Task 7: Einmaliges Secret und Verschlüsselung
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Secret/EncryptionKeyProvider.php`
+- Create: `src/Service/Secret/SecretCipher.php`
+- Create: `src/Service/Secret/AgentProvisioner.php`
+- Create: `src/Service/Secret/AgentSecretRotator.php`
+- Create: `src/Service/Secret/MasterKeyReencryptor.php`
+- Create: `src/Controller/Admin/AgentProvisionController.php`
+- Tests under `tests/Unit/Service/Secret/` and `tests/Integration/Service/Secret/`
+
+**RED:** Falscher/fehlender/duplizierter Keyring-Eintrag; unbekannte DB-Key-Version fail-closed; encrypt/decrypt; Manipulationserkennung; Klartext nur in unmittelbarer Provision-/Rotate-Response; DAL-Responses enthalten ihn nie; Agent-Secret-Rotation invalidiert alt sofort; Master-Key-Re-Encryption ist wiederaufnehmbar und entfernt die alte Version erst nach vollständigem Readback; Widerruf.
+
+**GREEN:** sodium secretbox mit zufälliger Nonce, versionierter `%env(MUWA_AGENT_ENCRYPTION_KEYRING)%`, Action-Routen mit separaten ACLs sowie wiederaufnehmbarer Re-Encryption-Service mit Readback-Prüfung.
+
+**Commit:** `feat(auth): provision encrypted one-time agent secrets`
+
+### Task 8: Gemeinsame Signatur-Fixtures
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `tests/Fixtures/protocol/{hmac-v1,routes-v1,errors-v1}.json`
+- Create: JSON-Schemas/DTO-Fixtures für heartbeat, claim, start, lease-heartbeat und complete
+- Create: `src/Service/Auth/RequestSignature.php`
+- Create: `src/Service/Auth/ResponseSignature.php`
+- Create: `agent/go.mod`
+- Create: `agent/internal/api/signing.go`, `signing_test.go`
+- Create corresponding PHPUnit unit tests
+
+**RED:** PHP und Go konsumieren dieselben Vektoren für dekodierten 32-Byte-Key, Domänenpräfix, LF ohne Abschluss-LF, leeren/gefüllten Body, exakt kanonischen Pfad, Timestamp/Nonce, Request/Response, doppelte Header, alle fünf Routen, DTOs, Fehlercodes, Bodylimits Grenze/Grenze+1 und den bewusst leeren unsignierten Unknown-Key-401-Fall. Negative Vektoren decken Query, Prozentkodierung, Backslash, Dot-Segmente, doppelte Slashes, Trailing Slash, führende Timestamp-Nullen und ungültiges Base64url ab.
+
+**GREEN:** Konstante Zeitvergleiche, exakte Basisstrings, keine Query-Unterstützung.
+
+**Verify:**
+```bash
+composer test:unit -- --filter Signature
+cd agent && go test ./internal/api -run TestSigningVectors -count=1
+```
+
+**Commit:** `feat(protocol): define shared request and response signatures`
+
+### Task 9: Agent-Authentisierung und Replay-Schutz
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Auth/AgentAuthenticator.php`, `ReplayGuard.php`
+- Create: `src/Subscriber/AgentAuthenticationSubscriber.php`
+- Create: `src/Subscriber/AgentResponseSigningSubscriber.php`
+- Create auth/replay integration tests
+
+**RED:** gültig; falscher Body/Pfad/Nonce/Timestamp; widerrufen/deaktiviert; Query vorhanden; parallele identische Nonce; Timestamp am positiven Fensterrand bleibt bis `requestTimestamp+65s` replaygeschützt; Cleanup löscht nicht zu früh; signierte 2xx/4xx/5xx-Antworten nach Key-Auflösung; bewusst leere unsignierte 401 vor Key-Auflösung wird vom Client nur als terminaler Fehler akzeptiert und niemals als Nutzdatenquelle; Content-Encoding und mehrdeutige Length-/Transfer-Encoding-Header werden abgelehnt.
+
+**GREEN:** Nonce nach erfolgreicher Signatur atomar inserieren; UNIQUE entscheidet Replay. Cleanup löscht abgelaufene Nonces in Batches.
+
+**Commit:** `feat(auth): secure agent routes with replay-safe HMAC`
+
+### Task 10A: Vier reale Dienste vor dem DSL-Freeze inventarisieren
+
+**Repositories:** `MuckiSafe`, reale Test-/Referenzhosts lesend, danach `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `docs/reference-services.md`
+- Create: `tests/E2E/versions.env`
+- Create: `tests/E2E/images.lock`
+- Create: vier erwartete Wirkungs-/Cleanup-Manifeste unter `tests/E2E/contracts/`
+
+**Steps:**
+1. Bitwarden-, Jellyfin- und Immich-Referenzskripte, Compose-/systemd-Konfiguration und echte Zielpfade erfassen.
+2. Das reale Paperless-`paperless_pre.sh`, seine Aufrufer, Compose-Konfiguration, Argumente und die bekannte `${2}`-Fehlerstelle erfassen. Keine fehlenden Argumente erfinden.
+3. Für jeden Dienst die benötigten Primitive, Parameter, Aliase, Idempotenzklasse, Startzustände, Health-Kriterium, erwartete Dateien/ACLs/Servicezustände, Fehler-Injektionen und Cleanup definieren.
+4. Für alle in CI verwendeten Service-/Datenbankimages exakte Tags **und** Digests in `images.lock` pinnen. `versions.env` enthält die dazugehörigen lesbaren Versionen. Gate B akzeptiert keine `latest`-Tags oder Platzhalter.
+5. Bitwarden-Erfolg wird über Exitcode, nicht-leere aktuelle `.BAK`, Lesbarkeit aller Pflichtdateien und erfolgreiche Core-Sicherung geprüft – nicht über einen undefinierten Dump-Inhaltsvergleich.
+6. Falls die vier Fälle mit den sieben vorgesehenen Primitives nicht ausdrückbar sind, Primitive-Contract und Bedrohungsanalyse jetzt ergänzen, bevor Action-Schemas, Executor- oder Primitive-Go-Code entstehen. Das bereits isolierte Signaturmodul aus Task 8 ist hiervon nicht betroffen.
+
+**Output-Gate:** Vollständige Requirement→Primitive→E2E-Matrix für alle vier Dienste; Security-Review bestätigt, dass keine generische Shell-Primitive benötigt wird.
+
+**Commit:** `docs: freeze reference service execution contracts`
+
+### Task 10B: Action-DSL und kanonische Definition
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create schemas under `resources/schema/`
+- Create `src/Service/Action/{ActionValidator,ParameterValidator,CanonicalJsonHasher}.php`
+- Create Go counterparts under `agent/internal/action/`
+- Create valid/invalid shared fixtures
+
+**RED:** PHP und Go akzeptieren/ablehnen dieselben Fixtures; Hash identisch; Floats, unbekannte Felder, Shell-Primitives, absolute/Traversal-Pfade und untypisierte Parameter rot. Jede in Task 10A belegte Action muss das Schema erfüllen.
+
+**GREEN:** Erst jetzt V1-Schema für den durch Task 10A bestätigten Primitive-Satz einfrieren; kanonischer String wird gespeichert und transportiert.
+
+**Commit:** `feat(actions): define cross-language action schema`
+
+### Task 10C: Authentisierten Hostheartbeat implementieren
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Host/HostHeartbeat.php`
+- Create: `src/Controller/Api/HostHeartbeatController.php`
+- Create: `tests/Integration/Controller/Api/HostHeartbeatControllerTest.php`
+
+**RED:** Die Route `api.action.muwa.agent.v1.host_heartbeat` akzeptiert nur den aus `X-Mucki-Agent-Key` authentisierten Host, `platform="linux"`, erlaubte Architekturen und validierte Capabilities; aktualisiert `version`, `capabilities` und `last_seen_at` atomar; liefert signiert `{serverTime,pollAfterSeconds}`; widerrufene/falsche Hosts, unbekannte Felder sowie 16.384-Byte-Grenze/Grenze+1 schlagen mit dem normativen Fehlerformat fehl. Request-Agent-ID ist nicht zulässig.
+
+**GREEN:** Dünner Controller, zentrale DTO-/Schema-Validierung und HostHeartbeat-Service. Keine Claim- oder Joblogik.
+
+**Commit:** `feat(hosts): record authenticated agent heartbeats`
+
+### Task 11: Minimaler atomarer Claim-Durchstich
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Job/JobCreator.php`, `JobClaimer.php`
+- Create: `src/Controller/Api/JobClaimController.php`
+- Create DTOs under `src/Api/`
+- Create: `tests/Integration/Service/Job/ConcurrentClaimTest.php`
+
+**RED:** Zwei echte MySQL-Verbindungen, 100 Konkurrenzversuche, exakt ein Claim; zweiter Parallelclaim desselben Agenten bleibt leer, solange dessen erster Job `claimed|running|cancel_requested` ist; zwei verschiedene Agenten dürfen je einen Job claimen; falscher Ziel-Agent oder inzwischen fehlende materialisierte Capability erhält keinen Job; abgelaufene/deadline Jobs nicht claimbar.
+
+**GREEN:** kurze DBAL-Transaktion und `FOR UPDATE SKIP LOCKED`; zufälliges Claim-Token nur einmal in Response, DB speichert SHA-256.
+
+**Commit:** `feat(jobs): claim targeted jobs atomically`
+
+### Task 12: Lease, Start, Heartbeat und Fencing
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create services/controllers for start and heartbeat
+- Create: `tests/Integration/Service/Job/LeaseFencingTest.php`
+
+**RED:** Unveränderliche `phase_deadline`/`execution_deadline`/`stop_deadline` mit den Formeln aus Abschnitt 2.11; 30-Sekunden-Lease ab Claim, gedeckelt durch Execution-Deadline; Start vor Ablauf; Heartbeat alle 10 Sekunden; falscher Agent/Token/Version; alter Worker nach Reclaim; authentisierte `ambiguous`-Completion mappt `running -> unknown` ohne Requeue; `cancel_requested`; Heartbeat bleibt bis Stop-Deadline und Timeout-/Ambiguous-Completion bis Phase-Deadline ohne Lease-Verlängerung gültig, alle anderen Mutationen 409; Grenzzeitpunkte mit injizierter Uhr.
+
+**GREEN:** zentraler Transition-Guard, keine verteilte Statuslogik in Controllern.
+
+**Commit:** `feat(jobs): add leased execution with fencing`
+
+### Task 13: Completion und Output-Tails
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Job/JobCompletion.php`, `OutputTailNormalizer.php`
+- Create: `src/Controller/Api/JobCompleteController.php`
+- Create completion tests and shared fixtures
+
+**RED:** idempotente identische Completion auch beim Crash/Commit-vor-Response; zwei konkurrierende identische Completions liefern denselben Terminalstatus, widersprüchliche Wiederholung 409; vollständige Outcome→Status/Resultcode-Matrix; Erfolg ohne Tails; Fehler max. 65.536 Bytes je Stream; Summary 4.096 Bytes, Resultcode-Allowlist; UTF-8/Base64-Markierung; 262.144-Byte-Bodylimit vor JSON-Dekodierung; Base64-Overhead; zu große dekodierte Streams; `ambiguous` ohne Tails.
+
+**GREEN:** Completion transaktional, Run/Job-Audit ohne Secrets. In derselben Transaktion werden kanonischer Completion-Fingerprint, gebundener Agent, vorheriger Claim-Tokenhash und akzeptierte Lease-Version unveränderlich gespeichert; nur ein identischer authentisierter Retry erhält erneut 200.
+
+**Commit:** `feat(jobs): complete jobs idempotently with bounded diagnostics`
+
+### Task 14: Reaper und Cleanup
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Job/JobReaper.php`
+- Create: `src/ScheduledTask/AgentCleanupTask.php`, Handler
+- Create: `src/Service/Wakeup/WakeupCleaner.php`
+- Tests for retry/unknown/deadline/nonces/wakeup age
+
+**RED:** safe-Requeue ausschließlich für claimed/nie gestartete Jobs; niemals Requeue nach `running`; non-retryable unknown; Versuchslimit; atomarer `cancel_requested`-Übergang am Execution-Cutoff; terminal `unknown` ohne Ack bei Phase-Deadline; Cleanup-Batches; keine jungen Wakeups löschen; Fehler-Tails nach 30 Tagen nullen, Summary/Resultcode erhalten.
+
+**Commit:** `feat(jobs): recover expired leases and clean stale state`
+
+### Task 15: Facility-Hook-Konfiguration und Legacy-Guard
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Hook/LegacyHookConflictGuard.php`
+- Create hook repository/service/controller tests
+- Add explicit AgentHost association in Hook entity
+
+**RED:** Repository existiert; genau ein Hook je Phase; Ziel-Agent vorhanden/aktiv/capable; Facility-Legacy-Pre oder -Post blockiert das Speichern; Facility-Werte bleiben unverändert. Der Guard liest an Facility-Revision `1a37677` exakt `BackupRepositoryEntity::getPreBackupCommandType()` und `getPostBackupCommandType()` beziehungsweise die DAL-Felder `preBackupCommandType`/`postBackupCommandType`; nur der Wert `none` gilt als inaktiv.
+
+**GREEN:** Facility-Repository über dessen DAL-Repository lesen, kein Cross-FK. Die Laufzeitprüfung und Subscriber-Priorität folgen in Task 16.
+
+**Commit:** `feat(hooks): configure targeted actions without legacy overlap`
+
+### Task 16: BackupRunCoordinator und drei Subscriber
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Hook/BackupRunCoordinator.php`, `HostAgentHookExecutor.php`
+- Create: three Facility subscribers
+- Create: `tests/Integration/Service/Hook/BackupLifecycleTest.php`
+
+**RED-Matrix:** Erfolg; Pre fail true/false; Corefehler; Postfehler; Finallyfehler; genau ein Finally; Primärfehler bleibt; kein Hook; verwaister Run; Offline-Agent; verlorener Heartbeat; Prozessneustart; harte Pre-/Post-/Finally-Budgetgrenzen mit injizierter Uhr; 15-Sekunden-Abbruchpuffer; Waiter folgt safe Requeue eines nie gestarteten Jobs; kein Requeue nach Start; nach Waiter-Rückkehr beginnt kein neuer Step; Finally erhält trotz ausgeschöpftem Pre/Post sein eigenes Budget.
+
+**GREEN:**
+- `FacilityBackupBeforeSubscriber::getSubscribedEvents()` mappt `BeforeBackupCreatedEvent::NAME => ['onBefore', 1000]`; `onBefore()` prüft den Legacy-Konflikt vor Run-Erzeugung und jeder Hostseitenwirkung, dann Run erstellen und Pre ausführen/warten. Der bestehende `BackupCommandSubscriber` bleibt auf Priorität `0`.
+- After: Post auf demselben Run ausführen/warten.
+- Finished: Finally höchstens einmal, Run terminal abschließen.
+- `JobWaiter` setzt die festen Defaults/Maxima aus Abschnitt 2.11 serverseitig durch; Clientwerte können sie nicht erhöhen.
+
+**Commit:** `feat(hooks): coordinate pre post and finally host actions`
+
+### Task 17: WakeupWriter und globaler flacher Pfad
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `src/Service/Wakeup/WakeupWriter.php`
+- Create: `agent/internal/wakeup/watcher.go`
+- Unit tests in PHP/Go
+
+**RED:** temp+rename; UUID-Dateiname; Wakeup erst nach Commit; Duplikat/verlorenes Event; fremde/stale Datei; Poll-Fallback; Agent löscht nichts; simulierter Prozessabbruch nach DB-Commit aber vor Dateierzeugung verliert keinen Job.
+
+**GREEN:** `JobCreator` beendet/committet seine DBAL-Transaktion und gibt erst danach den materialisierten Job zurück; der aufrufende Service ruft dann `WakeupWriter` auf. Es gibt keinen erfundenen DBAL-After-Commit-Hook. Writer-Fehler oder Crash-Gap werden geloggt/über Polling geheilt, der bereits committete Job wird nicht zurückgerollt.
+
+**Commit:** `feat(wakeup): signal committed jobs through flat directory`
+
+### Task 18: Go-Agent-Skeleton und Transport
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create Go config, API client, version and CLI files
+- Create `agent/config.example.yaml`
+- Unit tests beside packages
+
+**RED:** HTTPS default; Zertifikatprüfung; `server.url` mit HTTP ohne `server.allowInsecureHttp: true` abgelehnt; HTTP mit exakt diesem Flag und deutlicher Startwarnung; keine `skipTlsVerify`-Option; Request-/Response-Signatur; Unknown-Key-401 als einziger akzeptierter unsignierter terminaler Fehler; jede andere unsignierte/ungültige Response wird verworfen; Timeouts; Retry/Backoff/Jitter; `config validate`; `--version`.
+
+**GREEN:** Standardbibliothek plus minimale Abhängigkeiten (`fsnotify`, YAML). Keine Credentials in Logs.
+
+**Verify:**
+```bash
+cd agent
+go test ./... -race -coverprofile=coverage.out
+go vet ./...
+```
+
+**Commit:** `feat(agent): add signed HTTP polling client`
+
+### Task 19: Journal und Runner
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `agent/internal/idempotency/journal.go`
+- Create: `agent/internal/agent/{runner,claim_loop,heartbeat}.go`
+- Tests for crash states and completion retry
+
+**RED:** started/completed atomar; State-/Elternpfad mit falschem Owner/Mode, Symlink, Hardlink oder beschädigtem Journal wird fail-closed; Datei- und Verzeichnis-fsync; Neustart safe/non-retryable; Hash-/Lease-Mismatch; Completion-Netzfehler führt nicht zu doppelter Hostwirkung; lokale Execution-Deadline überlebt Netzwerkverlust; `stopRequested` verkürzt sie; nach Deadline beginnt kein Step; Timeout wird vor Completion journalisiert; `maxConcurrency=1` lokaler Semaphor; Graceful Shutdown stoppt neue Claims, sendet für laufenden Job weiter Heartbeats, beendet ihn innerhalb seiner Deadline oder des systemd-Stop-Zeitbudgets und persistiert Journal vor Prozessende.
+
+**Commit:** `feat(agent): persist execution state across restarts`
+
+### Task 20: Linux-Executor
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:**
+- Create: `agent/internal/executor/{executor,process_linux,output_tail}.go`
+- Create policy loader
+- Unit tests
+
+**RED:** Policy/Config/Secret werden aus bereits descriptor-relativ verifizierten FDs geladen; unsichere Owner/Modi, Symlink-/Rename-Tausch und Reload-Rennen schlagen fail-closed fehl; getrenntes argv; ausschließlich lokal fest erlaubte Executables; Environment-Allowlist; Prozessgruppe; monotonic Deadline → SIGTERM → höchstens 5 Sekunden Grace → SIGKILL; Exit/Journal innerhalb des reservierten Puffers; simulierte Netzwerkpartition; chunkübergreifende Redaction und Byte-Tails; keine Shell. Ein D-State-/Killfehler wird `ambiguous`, nicht retrybar.
+
+**Commit:** `feat(agent): execute bounded Linux action steps`
+
+### Task 21: Primitive einzeln implementieren
+
+Je Primitive ein eigener RED-GREEN-Commit:
 
 1. `service.control`
 2. `service.wait-http`
@@ -370,426 +777,227 @@ MuckiSafeAgentPlugin sendet nur Aliase und validierte Parameter.
 6. `file.write-pipeline`
 7. `file.retention`
 
-Keine generische `command.exec`-Primitive. Später allenfalls lokal definierte Command-Aliase.
-
-### 8.3 Validierung
-
-- versioniertes Schema;
-- unbekannte Primitive/Parameter ablehnen;
-- kanonischer SHA-256-Hash der Definition;
-- Job materialisiert Definition, Parameter und Hash;
-- spätere Action-Änderungen verändern laufende Jobs nicht;
-- gemeinsame PHP-/Go-Fixtures.
-
-## 9. Datenmodell ausschließlich im MuckiSafeAgentPlugin
-
-Tabellenpräfix: `muwa_agent_*`.
-
-### 9.1 `muwa_agent_host`
+**Files:** `agent/internal/primitives/<name>.go` und `<name>_test.go`.
 
-- `id`, `name`, `enabled`
-- `key_id` UNIQUE
-- `secret_ciphertext`, `secret_key_version`
-- `capabilities JSON`
-- `max_concurrency`
-- `version`, `last_seen_at`, `revoked_at`
-- Zeitstempel
+Jeder Test deckt den in Abschnitt 2.7 und Task 10A eingefrorenen Schema-/Policy-Contract, Alias-Auflösung, Erfolgsfall, Fehler, Timeout, Idempotenz und Pfad-/Symlink-Grenzen ab. Pflicht-Negativfälle sind konkurrierender Symlink-Tausch, Magiclink, Traversal, unbekannte Unit/URL/Container/Command, Redirect, Größen-/Objektlimit und beschreibbare Policy-Datei. `file.write-pipeline` testet `renameat2(RENAME_NOREPLACE)`, Zielkollision, zwei konkurrierende Writer sowie Datei- und Verzeichnis-`fsync`. `docker.container.exec` ruft `/usr/bin/docker exec` mit argv auf; gzip-Ausgabe wird in Go erzeugt, nicht über Shell-Pipelines.
 
-### 9.2 `muwa_agent_action`
+**Commits:** `feat(primitives): add <primitive>`
 
-- `id`, `technical_name` UNIQUE, `label`, `enabled`
-- `definition LONGTEXT`, `definition_hash`
-- `parameter_schema LONGTEXT`
-- `required_capabilities JSON`
-- Default-/Max-Timeout
-- `retry_policy`, `idempotency_class`
-- Zeitstempel
+### Task 22: Referenzaction Bitwarden
 
-### 9.3 `muwa_agent_repository_hook`
+**Files:** `examples/actions/bitwarden.json`, Policy-Fixture, E2E-Fixture.
 
-- `id`
-- `facility_repository_id BINARY(16)` – logische Referenz, **kein Cross-Plugin-FK**
-- `phase` (`pre`, `post`, `finally`)
-- `agent_action_id` FK, RESTRICT
-- `parameters LONGTEXT`
-- `timeout_seconds`, `fail_on_error`, `enabled`
-- UNIQUE `(facility_repository_id, phase)`
-- Zeitstempel
+**Pre-Steps:** DB-Backup im Container, ACL-Lesegrant, Lesbarkeitsassertion für `.BAK`, `global.override.env`, `identity.pfx` und Data-Protection-Key. Keine Post-/Finally-Action nötig.
 
-Kein DB-FK auf `muwa_backup_repository`: Er würde Uninstall-/Update-Reihenfolgen zwischen Plugins koppeln. Repository-Existenz wird bei Save und Lauf über Facility-Service/DAL geprüft; ein Cleanup entfernt verwaiste Zuordnungen.
+**RED:** vollständiger Pre/Core-Ablauf; aktueller `.BAK` existiert und ist nicht leer; alle Pflichtdateien sind für den Backup-Principal lesbar; Fehler bei fehlendem/leeren/veraltetem Dump; Cleanup gemäß Task-10A-Manifest.
 
-### 9.4 `muwa_agent_backup_run`
+**Commit:** `feat(examples): add Bitwarden backup preparation`
 
-- `id`
-- `facility_repository_id` ohne Cross-Plugin-FK
-- `source`, `idempotency_key` UNIQUE, `status`
-- `started_at`, `finished_at`
-- `primary_error_code`, `primary_error_summary`
-- Zeitstempel
-
-### 9.5 `muwa_agent_job`
-
-- `id`
-- `backup_run_id` FK, CASCADE
-- `agent_action_id` FK, RESTRICT
-- `facility_repository_id`
-- `phase`, `action_definition`, `action_hash`, `payload`
-- `idempotency_key` UNIQUE, `concurrency_key`
-- `status`, `agent_id`, `claim_token_hash`, `lease_version`
-- `attempt`, `max_attempts`
-- `available_at`, `deadline_at`, `claimed_at`, `lease_expires_at`, `heartbeat_at`, `finished_at`
-- `result_code`, `result_summary`, nullable `stdout_tail`, `stderr_tail`
-- Zeitstempel
-
-`stdout_tail` und `stderr_tail` bleiben bei Erfolg `NULL`. Nur bei `failed`, `timed_out`, `expired` oder `unknown` speichert das Plugin je Stream maximal die letzten 64 KiB; der Agent redigiert bekannte sensitive Werte vor der Übertragung.
-
-Indizes:
-
-- `(status, available_at, deadline_at)`
-- `(agent_id, status, lease_expires_at)`
-- `(backup_run_id, phase)`
-- `(concurrency_key, status)`
-
-### 9.6 `muwa_agent_nonce`
-
-- `agent_id`, `nonce`, `expires_at`
-- UNIQUE `(agent_id, nonce)`
-- Cleanup per Scheduled Task
-
-## 10. Agent-API im MuckiSafeAgentPlugin
-
-Dedizierte Action-Routen:
-
-- `POST /api/_action/muwa/agent/heartbeat`
-- `POST /api/_action/muwa/agent/jobs/claim`
-- `POST /api/_action/muwa/agent/jobs/{jobId}/start`
-- `POST /api/_action/muwa/agent/jobs/{jobId}/heartbeat`
-- `POST /api/_action/muwa/agent/jobs/{jobId}/complete`
-
-Claim-Regeln:
-
-- Agent aktiv und nicht widerrufen;
-- Job `queued`, verfügbar und nicht abgelaufen;
-- Capabilities passend;
-- kein aktiver gleicher `concurrency_key`;
-- Versuchslimit nicht überschritten;
-- Claim, Tokenhash, Lease-Version und Status in einer Transaktion/CAS.
-
-Lease:
-
-- Default 30 Sekunden;
-- Heartbeat alle 10 Sekunden;
-- Heartbeat nur bei Agent + Claim-Token + Lease-Version;
-- abgelaufene Lease fenced den alten Worker;
-- `non_retryable` wird `unknown`, nicht automatisch wiederholt;
-- `safe` darf vom Reaper neu gequeued werden.
-
-Completion:
-
-- idempotent;
-- falscher/abgelaufener Claim: `409`;
-- bei Erfolg keine stdout-/stderr-Daten übertragen oder speichern;
-- bei Fehlern stdout und stderr jeweils als maximal 64-KiB-Tail übertragen und speichern;
-- keine Prozessumgebung oder Secrets.
-
-## 11. Administration im MuckiSafeAgentPlugin
-
-Eigenes Modul `Mucki Agent`, keine Änderungen am Facility-Adminmodul erforderlich.
-
-Bereiche:
-
-1. **Agenten:** Status, Version, letzte Sichtung, Capabilities, Provisionierung, Rotation, Widerruf.
-2. **Actions:** technische ID, Definition, Parameterschema, Timeout, Retry, Idempotenzklasse.
-3. **Repository-Hooks:** Facility-Repository auswählen, Pre/Post/Finally konfigurieren, Parameter validieren.
-4. **Jobs/Runs:** Status, Dauer, Agent, Phase, Ergebnis, begrenzte Logs.
-
-Facility-Repositories werden über die vorhandene Entity/API gelesen. Das Agent-Plugin definiert eigene ACLs:
-
-- `muwa_agent.viewer`
-- `muwa_agent.editor`
-- `muwa_agent.provisioner`
-- `muwa_agent.executor`
-
-Konflikte mit Legacy-Hooks werden beim Speichern und beim Before-Event geprüft.
-
-## 12. Repositorystruktur von MuckiSafeAgentPlugin
-
-```text
-MuckiSafeAgentPlugin/
-├── composer.json
-├── src/MuckiSafeAgentPlugin.php
-├── src/Migration/
-├── src/Core/Content/AgentHost/
-├── src/Core/Content/AgentAction/
-├── src/Core/Content/AgentRepositoryHook/
-├── src/Core/Content/AgentBackupRun/
-├── src/Core/Content/AgentJob/
-├── src/Controller/AgentApiController.php
-├── src/Controller/AgentAdminController.php
-├── src/Services/Auth/AgentAuthenticator.php
-├── src/Services/Auth/ReplayGuard.php
-├── src/Services/Job/JobClaimer.php
-├── src/Services/Job/JobCompletion.php
-├── src/Services/Job/JobReaper.php
-├── src/Services/Job/JobWaiter.php
-├── src/Services/Action/ActionValidator.php
-├── src/Services/Action/ParameterValidator.php
-├── src/Services/Hook/LegacyHookConflictGuard.php
-├── src/Services/Hook/HostAgentHookExecutor.php
-├── src/Services/Wakeup/WakeupWriter.php
-├── src/Subscriber/FacilityBackupBeforeSubscriber.php
-├── src/Subscriber/FacilityBackupAfterSubscriber.php
-├── src/Subscriber/FacilityBackupFinishedSubscriber.php
-├── src/Resources/config/services.xml
-├── src/Resources/app/administration/src/module/muwa-agent/
-├── tests/Unit/
-├── tests/Integration/
-├── agent/go.mod
-├── agent/cmd/mucki-agent/main.go
-├── agent/internal/api/client.go
-├── agent/internal/api/signing.go
-├── agent/internal/agent/claim_loop.go
-├── agent/internal/agent/heartbeat.go
-├── agent/internal/config/config.go
-├── agent/internal/executor/executor.go
-├── agent/internal/executor/process_unix.go
-├── agent/internal/idempotency/journal.go
-├── agent/internal/policy/aliases.go
-├── agent/internal/primitives/service_control.go
-├── agent/internal/primitives/service_linux.go
-├── agent/internal/primitives/docker_exec.go
-├── agent/internal/primitives/filesystem_acl_linux.go
-├── agent/internal/primitives/file_pipeline.go
-├── agent/internal/wakeup/watcher.go
-├── agent/packaging/systemd/mucki-agent.service
-├── agent/config.example.yaml
-├── agent/install.sh
-├── .github/workflows/php-tests.yml
-├── .github/workflows/go-tests.yml
-└── .github/workflows/agent-release.yml
-```
-
-## 13. Go-Agent-Build und Auslieferung
-
-- Go-Toolchain nur in lokalen Entwicklungsumgebungen und GitHub Actions.
-- `go test ./... -race` läuft in `go-tests.yml` bei jedem relevanten Push und Pull Request.
-- `agent-release.yml` cross-kompiliert bei Tags statische `linux/amd64`- und `linux/arm64`-Binaries mit reproduzierbaren Flags.
-- Release enthält Binary, SHA-256-Prüfsummen, Beispielkonfiguration, systemd-Unit und Installationsskript.
-- Installationsskript lädt das passende Release-Binary, prüft die Prüfsumme und installiert es root-owned.
-- Kein `go`, `go.mod`, Compiler oder Go-Cache wird in das MuckiSafe-Dockerimage oder auf den Zielhost installiert.
-- Ausbaustufe 2 ergänzt `darwin/amd64`, `darwin/arm64`, launchd und macOS-spezifische Primitive/Tests.
-
-Agentconfig:
-
-```yaml
-server:
-  url: https://backup.example.org
-  allowInsecureHttp: false
-  keyId: agent-linux-01
-  secretFile: /etc/mucki-agent/secret
-agent:
-  pollInterval: 10s
-  heartbeatInterval: 10s
-  leaseDuration: 30s
-  maxConcurrency: 1
-  wakeupDirectory: /var/lib/mucki-agent/wakeup
-  stateDirectory: /var/lib/mucki-agent/state
-policies:
-  containers:
-    immich-db: immich_postgres
-  services:
-    jellyfin: jellyfin
-  paths:
-    immich-data: /srv/immich/upload
-```
-
-Installation ohne TLS in einem kontrollierten Netz:
-
-```yaml
-server:
-  url: http://muckisafe.internal:8080
-  allowInsecureHttp: true
-  keyId: agent-linux-01
-  secretFile: /etc/mucki-agent/secret
-```
-
-Validierungsregeln:
-
-- `https://` funktioniert ohne Zusatzoption;
-- `http://` funktioniert nur mit `allowInsecureHttp: true`;
-- unbekannte Schemes, URL-Credentials und URLs ohne Host werden abgelehnt;
-- TLS-Zertifikatsprüfung bleibt bei HTTPS aktiv; eine allgemeine `skipTlsVerify`-Option ist nicht Bestandteil von V1;
-- HMAC-Authentisierung ist bei HTTP und HTTPS identisch und niemals abschaltbar.
-
-## 14. Semaphore/Wakeup
-
-- MuckiSafeAgentPlugin schreibt `<job-uuid>.ready.tmp` und benennt atomar nach `.ready` um.
-- Inhalt nur Job-ID und Protokollversion.
-- Agent überwacht per `fsnotify` und claimt anschließend über den konfigurierten HTTP(S)-Transport.
-- API-Polling bleibt aktiv.
-- Stale Wakeups werden bereinigt.
-- Ein einziger globaler, flacher Hostpfad ersetzt alle service- und instanzspezifischen systemd.path-Units.
-
-Linux:
-
-- Host: `/var/lib/mucki-agent/wakeup`
-- Container: `/var/run/mucki-agent/wakeup`
-- Dateinamen: `<job-uuid>.ready`; Job-UUIDs verhindern Namenskollisionen ohne Unterordner.
-- Mehrere Container dürfen denselben Hostpfad einbinden. Zusätzliche Wakeups sind unschädlich, weil jeder Agent nur über seine konfigurierte API claimt.
-
-macOS/Docker Desktop – Ausbaustufe 2:
-
-- frei konfigurierbarer nativer Hostpfad;
-- derselbe Pfad wird in App und Scheduler gemountet;
-- launchd überwacht nur den Agentprozess, nicht jede Action.
-
-## 15. MuckiSafe-Distribution
-
-Änderungen ausschließlich in `muckiware/MuckiSafe`:
-
-- `docker/Dockerfile`: `muckiware/mucki-safe-agent-plugin` zusätzlich installieren;
-- Version-Build-Arg und `.muckisafe-versions` ergänzen;
-- `.github/workflows/docker-publish.yml`: Release-Dispatch des Agent-Plugins berücksichtigen;
-- `docker-compose.yml`: Wakeup-Bind-Mount in `app` und `scheduler`;
-- `.env.example`: `MUCKI_AGENT_WAKEUP_PATH`;
-- `README.md` und `docs/host-agent/`: einmalige Agentinstallation und Provisionierung.
-- Im Docker-Build keine Go-Toolchain installieren und keinen Agenten kompilieren.
-
-Normale Facility-Installationen außerhalb MuckiSafe sind davon nicht betroffen.
-
-## 16. Implementierungsphasen
-
-### Phase 0: Lifecycle- und Protocol-Spike
-
-1. Facility-`BackupFinishedEvent` mit Fehlerpriorität als isolierten TDD-Spike bauen.
-2. Beweisen, dass Facility ohne AgentPlugin unverändert sichert.
-3. Bitwarden, Jellyfin, Immich und Paperless als deklarative Actions modellieren.
-4. HMAC-Testvektoren PHP/Go erstellen.
-5. MySQL-Claim mit zwei konkurrierenden Clients testen.
-6. `fsnotify` über den globalen flachen Linux-Docker-Bind-Mount testen.
-
-Exit:
-
-- Facility-Testmatrix grün ohne AgentPlugin;
-- Finished bei jedem Ausgang;
-- vier Referenzfälle ohne generische Shell darstellbar;
-- 100 konkurrierende Claims vergeben einen Job genau einmal.
-
-### Phase 1: Neues MuckiSafeAgentPlugin scaffolden
-
-1. Repository `muckiware/MuckiSafeAgentPlugin` mit PHP-Plugin und Verzeichnis `agent/` anlegen;
-2. Aktivierungscheck auf Facility;
-3. eigene Migrationen und DAL-Definitionen TDD;
-4. Uninstall mit/ohne `keepUserData` testen;
-5. PHPUnit-Unit- und Integration-Teststruktur plus `php-tests.yml` anlegen;
-6. keine Facility-Datei außer dem neutralen Lifecycle-Event ändern.
-
-### Phase 2: Go-Agent-Skeleton
-
-1. Go-Modul unter `agent/` und Unit-Teststruktur anlegen;
-2. Config und Dateirechteprüfung;
-3. signierter API-Client mit HTTPS-Default und explizit aktivierbarem HTTP;
-4. Claim-Schleife mit Backoff/Jitter;
-5. fsnotify + Poll-Fallback;
-6. lokales Idempotenzjournal;
-7. Executor mit Timeout/Prozessgruppen/Output-Limit;
-8. systemd-Packaging;
-9. `go-tests.yml` und `agent-release.yml` für Linux amd64/arm64;
-10. jede Go-Komponente testgetrieben mit Unit-Tests implementieren.
-
-### Phase 3: Agent-Control-Plane
-
-1. einmalig angezeigtes Secret, Rotation und Widerruf;
-2. HMAC-Authentisierung und Replay-Guard;
-3. Claim/Start/Heartbeat/Completion;
-4. Lease-Reaper;
-5. Agent- und Job-Administration.
-
-### Phase 4: Action-DSL
-
-1. versioniertes Schema;
-2. PHP-/Go-Validator mit gemeinsamen Fixtures;
-3. sieben V1-Primitives;
-4. lokale Alias-Policy;
-5. Action-Editor und Parameterprüfung.
-
-### Phase 5: Facility-Integration im AgentPlugin
-
-1. Before/After/Finished-Subscriber;
-2. BackupRun-Korrelation;
-3. Pre/Post/Finally-Fehlersemantik;
-4. Legacy-Konfliktguard;
-5. WakeupWriter;
-6. eigenes Repository-Hook-Adminmodul.
-7. Bitwarden-, Jellyfin-, Immich- und Paperless-Actions mit jeweils einer mehrstufigen Action pro Phase.
-
-### Phase 6: MuckiSafe-Distribution
-
-1. AgentPlugin ins Image;
-2. Wakeup-Mount;
-3. vorkompiliertes Linux-Agent-Binary aus GitHub Release installieren;
-4. vier Referenzactions konfigurieren;
-5. Erfolg und alle Fehlerpfade E2E;
-6. `docker compose pull && up -d` ohne Verlust der Hostkonfiguration beweisen.
-
-## 17. Tests
-
-### Facility-Plugin
-
-- PHPUnit-Unit-Tests für Fehlerpriorität und Eventdaten;
-- PHPUnit-Integrationstests für den neuen Finished-Lifecycle;
-- AgentPlugin nicht installiert: alle bestehenden Tests unverändert grün;
-- Legacy-Batch-/PHP-Hooks funktionieren weiter;
-- Finished-Subscriber-Fehler priorisiert korrekt.
-
-Verifikation: vorhandener Facility-PHPUnit-Befehl plus gezielter Lauf der neuen Lifecycle-Testklasse; beide müssen ohne AgentPlugin grün sein.
-
-### MuckiSafeAgentPlugin
-
-- PHPUnit-Unit-Tests unter `tests/Unit/` für Authentisierung, Signaturprüfung, Replay-Guard, Action-/Parameter-Validator, Hook-Fehlersemantik, Output-Tail-Begrenzung und Wakeup-Dateinamen;
-- PHPUnit-Integrationstests unter `tests/Integration/` für DAL, Migrationen, Indizes, verschlüsselte Secret-Speicherung und ApiAware-/WriteProtected-Regeln;
-- Facility-Aktivierungsabhängigkeit;
-- logische Repository-Referenz und Orphan-Cleanup;
-- Legacy-Konflikt blockiert vor Seitenwirkung;
-- paralleler Claim genau einmal;
-- Capability-Mismatch;
-- Lease/Fencing/Heartbeat;
-- idempotente Completion;
-- Nonce-Replay und Widerruf;
-- Pre/Core/Post/Finally-Matrix;
-- Finally überschreibt Primärfehler nicht;
-- Timeout gibt Facility-Backup-Lock frei;
-- bei Erfolg bleiben Output-Tails `NULL`, bei Fehlern werden je Stream nur die letzten 64 KiB gespeichert;
-- AgentPlugin-Uninstall verändert keine Facility-Daten;
-- `.github/workflows/php-tests.yml` führt Unit- und Integrationstests in der unterstützten PHP-/Shopware-Matrix aus.
-
-Lokale Standardbefehle, die als Composer-Skripte angelegt werden:
+### Task 23: Referenzaction Jellyfin
+
+**Pre:** `service.control stop`, ACL, DB-Lesbarkeitsprüfung.
+
+**Finally:** `service.control start`, `service.wait-http` auf `/System/Info/Public`.
+
+**RED:** Corefehler startet Jellyfin trotzdem; Stopfehler führt Best-Effort-Finally aus; idempotentes stop/start.
+
+**Commit:** `feat(examples): add Jellyfin backup lifecycle`
+
+### Task 24: Referenzaction Immich
+
+**Pre:** `docker.container.exec` für `pg_dump --clean --if-exists`, Go-gzip in temporäre Datei, atomarer Rename in `backups/`, Retention nur eigener manueller Dumps, ACL auf konfigurierten Pfad-Aliassen, Lesbarkeitsassertion.
+
+**RED:** `.part` wird bei Fehler entfernt; Dump nicht leer; Pfade bleiben unter Alias; getrennte Immich-Pfade unterstützt.
+
+**Commit:** `feat(examples): add Immich online backup preparation`
+
+### Task 25: Referenzaction Paperless
+
+**Prerequisite:** Der in Task 10A freigegebene Paperless-Vertrag inklusive realer Argumente, Compose-Ziele und Regression für die bekannte `${2}`-Fehlerstelle. Dieser Task darf das eingefrorene Primitive-Schema nicht beiläufig erweitern.
+
+**Target:** Die in Task 10A belegten Hostwirkungen mit den bereits implementierten Container-/ACL-/Retention-Primitives ausdrücken; keine generische Shell-Primitive.
+
+**RED:** Export erfolgreich/fehlgeschlagen, Lesbarkeit, Retention, Wiederholung und Cleanup.
+
+**Commit:** `feat(examples): add Paperless backup preparation`
+
+### Task 26: Administration und ACL
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:** Administration-Modul unter `src/Resources/app/administration/src/module/muwa-agent/`, Snippets, API-Service.
+
+Vertikale Scheiben:
+1. Agent-Liste + Provisionierung/einmalige Anzeige/Widerruf.
+2. Action-Liste/-Editor mit Schemafehlern.
+3. Hook-Zuordnung mit Facility-Repository und Ziel-Agent.
+4. Runs/Jobs read-only mit Fehler-Tails nur für berechtigte Rolle.
+
+**ACL:** Viewer, Editor, Provisioner, Executor; jede Admin-Action erhält serverseitigen Negativtest. Administration-Build ist Pflicht; kein reiner UI-ACL-Schutz.
+
+**Commit je Scheibe:** `feat(admin): ...`
+
+### Task 27: CI und getrennte Releases
+
+**Repository:** `MuckiSafeAgentPlugin`
+
+**Files:** fünf Workflows, `.gitattributes`, Composer archive excludes, Go packaging/systemd.
+
+`agent/packaging/install.sh` erzeugt idempotent Config-/State-Verzeichnisse als `root:root` und `/var/lib/mucki-agent/wakeup` als `root:33`, Mode `0770`; es prüft, dass GID 33 zum Container-`www-data`-Vertrag passt, bevor es systemd startet.
+
+Die systemd-Unit setzt mindestens `UMask=0077`, `PrivateTmp=true`, restriktive `ReadWritePaths` nur für State/Wakeup und – soweit mit systemctl/docker/Hostdateien kompatibel – `NoNewPrivileges` sowie begrenzte `RestrictAddressFamilies`/`SystemCallFilter`. Ein E2E-Härtungstest beweist benötigte Funktionen und den Startabbruch bei unsicherer Config-/Secret-/Policy-/State-Datei oder Elternkette.
+
+**RED-Artefakttests:**
+- Plugin-ZIP enthält kein `agent/`, keine Go-Dateien und keine Test-/CI-Dateien.
+- Agent-Binaries werden explizit mit `CGO_ENABLED=0 GOOS=linux GOARCH=amd64|arm64 -trimpath` gebaut; Prüfsummen vorhanden.
+- `file`, `readelf -l/-d` und – auf nativer Architektur – `ldd` weisen weder `INTERP`/`NEEDED` noch dynamische Laufzeitabhängigkeiten nach.
+- `--version` und `config validate` laufen im sauberen Runner.
+- Plugin- und Agent-Artefakte sind getrennt.
+
+**Workflows:**
+- `php-tests.yml`: Shopware 6.6/6.7, PHP 8.3/8.4/8.5 soweit kompatibel; MySQL 8.0/8.4.
+- `go-tests.yml`: `go test -race`, `go vet`, Coverage-Artefakt; eigener Graceful-Shutdown-/Signaltest mit laufendem Fake-Prozess und Journalprüfung.
+- `e2e-linux.yml`: amd64 nativ auf GitHub-Runner; vollständige arm64-Dienst-E2E auf Runner-Labels `[self-hosted, linux, arm64, muckisafe-e2e]`. QEMU ist nur für ergänzende Smoke-Tests zulässig und ersetzt die native arm64-Abnahme nicht.
+- `plugin-release.yml`: ZIP/Packagist und Dispatch `muckisafe-agent-plugin-release` mit `{package, ref}`.
+- `agent-release.yml`: Linux-Binaries, Checksummen, Config, systemd, Installer.
+
+**Commit:** `ci: test and release plugin and Linux agent separately`
+
+### Task 28: MuckiSafe-Distributionstest zuerst
+
+**Repository:** `MuckiSafe`
+
+**Files:** Create `tests/agent-plugin-integration-test.sh`.
+
+**RED:** Ausführbarer Test (`100755`) verlangt `AGENT_PLUGIN_VERSION`, Composer-Paket, fail-closed Dispatch/Pinning, genau zwei gleiche Wakeup-Mounts, `MUWA_AGENT_ENCRYPTION_KEYRING`, Env-/README-Doku und Abwesenheit von Go/Agent-Binary im Image. Für `muckisafe-agent-plugin-release` müssen `client_payload.package === "muckiware/mucki-safe-agent-plugin"` und ein gültiger Semver-`ref` vorliegen; fehlendes/falsches Paket oder ungültiger Ref brechen den Workflow ab. Ein positiver Fixture-Test belegt das exakte `AGENT_PLUGIN_VERSION`-Build-Arg.
+
+**Commit:** `test: define agent plugin distribution contract`
+
+### Task 29: AgentPlugin ins MuckiSafe-Image
+
+**Repository:** `MuckiSafe`
+
+**Files:** `docker/Dockerfile`, Publish-Workflow.
+
+**GREEN:** Build-Arg und atomarer Composer-Require; defensives Entfernen lokaler Plugin-Checkouts; Dispatch-Pin; `.muckisafe-versions` nimmt Paket automatisch auf.
+
+**Verify:** Image bauen, `composer show --locked`, Versionsdatei, Plugin-Aktivierung. Dann nachweisen:
 
 ```bash
+! command -v go
+test ! -e /usr/local/bin/mucki-agent
+! find /var/www/html/vendor/muckiware/mucki-safe-agent-plugin \
+  -type f \( -name '*.go' -o -name go.mod -o -name go.sum -o -name mucki-agent \) \
+  -print -quit | grep -q .
+```
+
+**Commit:** `build: install MuckiSafeAgentPlugin from Composer`
+
+### Task 30: MuckiSafe-Wakeup und Secrets
+
+**Repository:** `MuckiSafe`
+
+**Files:** `docker-compose.yml`, `.env.example`, README.
+
+**GREEN:**
+- `${MUCKI_AGENT_WAKEUP_PATH:-/var/lib/mucki-agent/wakeup}:/var/run/mucki-agent/wakeup` in `app` und `scheduler`.
+- `MUWA_AGENT_ENCRYPTION_KEYRING` in beiden Services.
+- `install.sh` erzeugt auf dem Host `/var/lib/mucki-agent/wakeup` als `root:33`, Mode `0770`, vor Containerstart; README enthält denselben idempotenten `install -d`-Schritt. Compose selbst wird nicht fälschlich als Besitzer-/Modus-Provisioner behandelt.
+- Schreibprobe als `www-data` aus beiden Services.
+
+**Commit:** `feat: mount global host-agent wakeup directory`
+
+### Task 31: Hostinstallation und Distribution-Dokumentation
+
+**Repository:** `MuckiSafe`
+
+**Files:** `README.md`, `docs/host-agent/README.md`.
+
+Dokumentieren: GitHub-Release-Download, SHA-256-Prüfung, systemd, root-owned Config/Secret/State, HTTPS-Default, explizites HTTP, globaler Pfad, kein Go auf Host, Dispatch `muckisafe-agent-plugin-release`.
+
+**Commit:** `docs: document separate MuckiSafe host agent`
+
+### Task 32: Vollständige E2E-Abnahme und Rollout
+
+**Repository:** `MuckiSafeAgentPlugin`; alle folgenden Befehle laufen von dessen Repository-Root. Facility und MuckiSafe werden durch das E2E-Compose als externe Prüflinge auf den freigegebenen Versionen eingebunden.
+
+**Files:**
+- Create: `tests/E2E/compose/compose.yaml`
+- Create: `tests/E2E/scripts/run-linux-e2e.sh`
+- Create: `tests/E2E/scripts/{setup,trigger-backup,inject-failure,assert-effects,cleanup}.sh`
+- Create: `tests/E2E/scenarios/{bitwarden,jellyfin,immich,paperless}.sh`
+- Create: `tests/E2E/fixtures/{bitwarden,jellyfin,immich,paperless}/`
+- Modify: `.github/workflows/e2e-linux.yml`
+
+**Reihenfolge:** Facility `v0.11.0` → AgentPlugin Composer-Release + Agent-Binary → MuckiSafe-Image.
+
+**Pflichtfälle:**
+- Bitwarden, Jellyfin, Immich, Paperless jeweils mit den in `tests/E2E/versions.env` und `images.lock` exakt gepinnten Versionen/Digests; kein `latest`, kein unaufgelöster Platzhalter.
+- Jeder Dienst beginnt aus dem in Task 10A dokumentierten Startzustand und belegt die erwarteten Hostwirkungen: Bitwarden-Dump/Pflichtdateien lesbar; Jellyfin während Core gestoppt und danach wieder healthy; Immich atomarer nicht-leerer komprimierter Dump plus Retention/ACL; Paperless-Export plus Retention/ACL. Jedes Fixture prüft anschließend seinen dokumentierten Cleanup- und Endzustand.
+- Pre-, Core-, Post- und Finally-Fehler.
+- Agent offline, API offline, verlorener/duplizierter Wakeup, Agent-Neustart, Lease-Ablauf, alter Worker, Completion-Retry.
+- HTTP(S)-Signaturen in beide Richtungen; HTTP-Test bestätigt zusätzlich die sichtbare Warnung über mitlesbare Actions, Parameter und Fehler-Tails.
+- Linux amd64 nativ und vollständige arm64-Abnahme auf dem in Task 27 festgelegten nativen self-hosted Runner.
+- `docker compose pull && docker compose up -d` erhält Host-Binary, Config, Secret, Journal und Wakeup-Pfad.
+- Facility-only Shop ohne AgentPlugin bleibt vollständig grün.
+
+Jedes Szenario startet seinen gepinnten Dienstzustand aus `images.lock`, provisioniert Hostpolicy/Agent, triggert den realen Backup-Pfad, injiziert nacheinander die festgelegten Pre/Core/Post/Finally-/Netzwerk-/Leasefehler, prüft die dienstspezifischen Wirkungen und führt den dokumentierten Cleanup bis zum definierten Endzustand aus. Der Orchestrator schreibt JUnit-XML, Container-/Agentlogs, Run-/Jobstatus und Dateimanifeste als CI-Artefakte.
+
+**Verify:**
+```bash
+tests/E2E/scripts/run-linux-e2e.sh --arch amd64 --scenario bitwarden
+tests/E2E/scripts/run-linux-e2e.sh --arch amd64 --scenario jellyfin
+tests/E2E/scripts/run-linux-e2e.sh --arch amd64 --scenario immich
+tests/E2E/scripts/run-linux-e2e.sh --arch amd64 --scenario paperless
+# dieselben vier Befehle mit --arch arm64 auf [self-hosted, linux, arm64, muckisafe-e2e]
+```
+
+Gate E akzeptiert ausschließlich erfolgreiche reale Ausgaben aller vier Szenarien auf beiden nativen Architekturen; vorhandene Fixtures oder eine manuell abgehakte Checkliste genügen nicht.
+
+Erst danach alte service-spezifische systemd.path-Kits deaktivieren; zunächst als Rollback erhalten.
+
+### Task 33: Gestufter Produktiv-Rollout und kontrollierter Rollback
+
+**Reihenfolge und Abnahmekriterien:**
+1. Agent-Binary/Policy installieren, Agent provisionieren, aber noch keine Facility-Hooks zuordnen.
+2. Mindestens 24 Stunden Heartbeats beobachten: keine Auth-/Replayfehler, keine unerwarteten Restarts, stabile Uhrabweichung innerhalb ±60 Sekunden und keine offenen Jobs.
+3. Genau ein nicht kritisches Testrepository auf Agent-Hooks migrieren; Legacy-Hooks dafür erst nach erfolgreicher Konfliktprüfung deaktivieren.
+4. Mindestens einen vollständigen Pre/Core/Post/Finally-Lauf und einen absichtlich injizierten Fehlerlauf prüfen; Jobs/Runs müssen terminal sein und Hostendzustand dem Manifest entsprechen.
+5. Erst danach weitere Repositories einzeln migrieren; nach jeder Migration mindestens einen vollständigen Lauf abwarten.
+
+**Rollback:**
+- Neue Hook-Erzeugung deaktivieren und keine weiteren Jobs claimen lassen.
+- `queued`/nie gestartete `claimed` Jobs atomar auf `timed_out` setzen; `running` Jobs auf `cancel_requested` setzen und bis Timeout-/Ambiguous-Completion oder Phase-Deadline warten.
+- Rollback darf erst fortfahren, wenn die Abfrage `claimed|running|cancel_requested` exakt null Jobs liefert; `unknown` wird manuell bewertet und nicht automatisch wiederholt.
+- Agent-Hook-Zuordnungen entfernen, anschließend die zuvor unverändert erhaltenen Legacy-Hooks/systemd.path-Kits reaktivieren und einen Backup-Lauf verifizieren.
+- Agent-Binary, Config und Journal zunächst behalten; Deinstallation ist ein separater letzter Schritt nach erfolgreichem Legacy-Lauf.
+
+**Tests/Runbook:** Admin/API-Integrationstest für „keine offenen Jobs“, dokumentiertes SQL/API-Readback und ein durchgespielter Rollback im Linux-E2E-Fixture.
+
+**Commit:** `docs: add staged rollout and controlled rollback runbook`
+
+## 5. Standard-Gates pro Task
+
+1. Failing Test schreiben und ausführen; Fehler muss fachlich erwartet sein.
+2. Minimale Implementierung.
+3. Zieltest grün.
+4. Vollständige betroffene Suite grün.
+5. `git diff --check`, statische Analyse/Lint.
+6. Unabhängiger Spec-Review gegen diesen Task.
+7. Unabhängiger Security-/Quality-Review.
+8. Erst danach Commit; keine Sammelcommits über mehrere Tasks.
+
+PHP:
+
+```bash
+composer validate --strict
 composer test:unit
 composer test:integration
 composer test
+composer run-script phpstan
 ```
 
-### Go-Agent
-
-- Go-Unit-Tests direkt neben den Packages (`*_test.go`) für Config, HMAC-Testvektoren, API-Client, Claim-Schleife, Executor, Policy, Primitive, Journal und Wakeup-Watcher;
-- HTTPS-Default und Zertifikatsprüfung;
-- Startfehler bei HTTP ohne `allowInsecureHttp`;
-- erfolgreicher HTTP-Betrieb mit `allowInsecureHttp: true` und sichtbarer Startwarnung;
-- identische HMAC-/Replay-Prüfung über HTTP und HTTPS;
-- Backoff/Jitter;
-- Prozessgruppen-Kill;
-- Output-Limit und Environment-Allowlist;
-- lokale Alias-Policy;
-- Idempotenzjournal;
-- Completion-Retry ohne Wiederholung;
-- Semaphore-Verlust/-Duplikat;
-- Polling ohne Semaphore;
-- Graceful Shutdown;
-- Race Detector und Coverage-Artefakt in GitHub Actions.
-
-Verifikation aus dem Repository-Root:
+Go:
 
 ```bash
 cd agent
@@ -797,74 +1005,50 @@ go test ./... -race -coverprofile=coverage.out
 go vet ./...
 ```
 
-Beide Befehle müssen vor Merge grün sein. Die Release-Workflow-Binaries werden zusätzlich in einem sauberen Linux-Runner mit `--version` und `config validate` ausgeführt.
+MuckiSafe:
 
-### E2E
+```bash
+bash -n tests/*.sh docker/*.sh
+./tests/agent-plugin-integration-test.sh
+./tests/ssh-keys-test.sh
+./tests/ssh-integration-test.sh
+docker compose --env-file .env.example config
+```
 
-- Linux amd64/arm64;
-- systemd Restart;
-- Bitwarden, Jellyfin, Immich, Paperless;
-- API-Ausfall, Agent-Neustart, Lease-Verlust, verlorene Semaphore;
-- Facility-only Shop ohne AgentPlugin;
-- MuckiSafe mit Facility + AgentPlugin.
+## 6. Nicht-Ziele von V1
 
-### Ausbaustufe 2: macOS
+- macOS/launchd; folgt in Ausbaustufe 2.
+- Windows.
+- generische Shell-/PowerShell-Ausführung.
+- implizite Kompensation beliebiger bereits ausgeführter Steps.
+- überlappende Secret-Rotation mit current/next Credentials.
+- genau-einmal garantierte externe Hostwirkung.
+- frei wählbare Agenten nur anhand von Capabilities.
+- Go-Toolchain oder Agent-Binary im MuckiSafe-Image.
 
-- macOS amd64/arm64 Unit-, Integrations- und E2E-Tests;
-- launchd Restart;
-- macOS-spezifische Service- und ACL-Primitives;
-- dieselben vier Referenzdienste soweit auf macOS technisch vorhanden, ansonsten äquivalente Fixtures.
+## 7. Plan-Gates
 
-## 18. Rollout
+- **Eingangsgate:** Task 0 abgeschlossen, Dokumenttest und unabhängiger Spec-Review grün.
+- **Gate A:** Tasks 1–4 grün, Facility `v0.11.0` veröffentlicht.
+- **Gate B:** Tasks 5–14 grün, Control-Plane-Protokoll stabil.
+- **Gate C:** Tasks 15–21 grün, Facility-Integration und Linux-Agent vollständig.
+- **Gate D:** Tasks 22–27 grün, vier Referenzfälle, Administration und Releases vorhanden.
+- **Gate E:** Tasks 28–32 grün, MuckiSafe-Distribution real verifiziert.
+- **Gate F:** Task 33 vollständig protokolliert, 24-Stunden-Heartbeat-Fenster und Testrepository erfolgreich, Rollbackprobe ohne offene Jobs bestanden.
 
-1. neutrales Finished-Event in Facility veröffentlichen;
-2. MuckiSafeAgentPlugin gegen diese Facility-Version veröffentlichen;
-3. vorkompiliertes MuckiAgent-Release-Binary installieren und das einmalig angezeigte Secret konfigurieren;
-4. 24 Stunden Leerlauf/Heartbeat beobachten;
-5. ein Testrepository migrieren;
-6. Facility-Legacy-Hooks dort manuell auf `none` setzen;
-7. Agent-Hooks aktivieren;
-8. Bitwarden, Jellyfin, Immich und Paperless nacheinander migrieren;
-9. alte service-spezifische Kits erst nach erfolgreichen E2E-Läufen vom Host entfernen.
+## 8. Definition of Done
 
-Rollback:
-
-- Agent-Hooks im MuckiSafeAgentPlugin deaktivieren;
-- offene Jobs canceln;
-- Facility-Backup läuft ohne Agent-Hook weiter;
-- Legacy-Hooks bleiben unverändert gespeichert und können bewusst wieder aktiviert werden.
-
-## 19. Risiken
-
-| Risiko | Gegenmaßnahme |
-|---|---|
-| AgentPlugin koppelt Facility zu stark | Nur öffentliche Facility-Events/Services verwenden; eigene Tabellen und UI; kein Cross-Plugin-FK. |
-| Garantiertes Finally braucht Facility-Änderung | Ein neutrales Finished-Event als allgemeine Extension API; keine Agent-Klasse in Facility. |
-| Legacy und Agent laufen doppelt | Konfliktprüfung beim Save und im Before-Subscriber mit hoher Priorität. |
-| Root-RCE über Action-Definition | Keine Shell, versionierte Primitive, lokale Alias-Policy, doppelte Validierung. |
-| Doppelte Jobwirkung | atomarer Claim, Lease/Fencing, lokales Journal, idempotente Completion. |
-| Agent stirbt nach Hostwirkung | Journal; nur Completion wiederholen. |
-| Facility-Repository wird gelöscht | keine Cross-FK; Orphan-Cleanup und Laufzeitvalidierung. |
-| AgentPlugin wird deinstalliert | nur eigene Tabellen löschen; Facility-Daten und Backups unverändert. |
-| API nicht erreichbar | harte Deadlines, Completion-Puffer, deterministischer Jobstatus. |
-
-## 20. Freigabestatus
-
-Alle bisher offenen Architekturentscheidungen sind beantwortet und in Abschnitt 2 verbindlich festgehalten. Für den Start von Phase 0 bestehen keine offenen Produktentscheidungen.
-
-## 21. Definition of Done
-
-- Facility-only Shops erhalten keine Agent-Tabellen, Agent-UI, Agent-Routen oder Go-Abhängigkeit.
-- Facility bleibt mit bestehenden Legacy-Hooks funktionsfähig.
-- MuckiSafeAgentPlugin kann unabhängig installiert/deinstalliert werden und verändert keine Facility-Daten.
-- Ein Host braucht nur MuckiAgent, Credential, Alias-Policy und einen Wakeup-Mount.
-- Neue Backup-Actions benötigen keine systemd.path-Sonderunits und keine Container-Shellskripte.
-- Pre/Post/Finally funktionieren deterministisch.
-- `docker compose pull && up -d` verändert Agentbinary, Config, Credential und Journal nicht.
-- Weder MuckiSafe-Image noch Linux-Produktivhost enthalten oder benötigen eine Go-Toolchain; Releases werden ausschließlich von GitHub Actions kompiliert.
-- PHP-Unit-/Integrationstests und Go-Unit-Tests inklusive Race Detector laufen in GitHub Actions grün.
-- Keine Facility-/DB-/S3-Secrets erreichen Agent oder Logs.
-- Doppelte Wakeups/API-Retries erzeugen keine doppelte Hostwirkung.
-- HTTPS funktioniert ohne Zusatzfreigabe; HTTP funktioniert nur mit der dokumentierten expliziten Option und behält HMAC-/Replay-Schutz vollständig bei.
-- Erfolgreiche Jobs speichern keine Output-Tails; fehlgeschlagene Jobs höchstens 64 KiB je Stream.
-- Bitwarden, Jellyfin, Immich und Paperless bestehen reale E2E-Tests.
+- Design und Implementierungsplan sind getrennte Dokumente.
+- Facility enthält nur den neutralen Lifecycle-Contract und bleibt ohne AgentPlugin vollständig kompatibel.
+- AgentPlugin besitzt ausschließlich eigene Tabellen/ACL/API/Admin und keine Cross-Plugin-FKs.
+- Request und Response sind auch bei explizitem HTTP manipulationsgeschützt; HTTP bleibt als nicht vertraulich dokumentiert.
+- Ziel-Agent, Claim, Lease, Fencing, Replay und Completion sind durch echte Konkurrenztests belegt.
+- `maxConcurrency=1` ist serverseitig und im Go-Agenten belegt; Lease 30 Sekunden/Heartbeat 10 Sekunden sowie Cancellation-/Graceful-Shutdown-Verhalten sind in PHP-, Go- und E2E-Tests konsistent.
+- Secrets werden einmal gezeigt und authentisiert verschlüsselt gespeichert.
+- Erfolgreiche Jobs speichern keine Output-Tails; Fehler höchstens 64 KiB je Stream.
+- Globaler flacher Wakeup-Pfad funktioniert aus `app` und `scheduler`; Polling bleibt korrekt ohne Wakeup.
+- Go- und PHP-Unit-/Integrationstests laufen in CI grün.
+- Bitwarden, Jellyfin, Immich und Paperless bestehen reale Linux-E2E-Tests auf amd64 und arm64.
+- Plugin-ZIP und MuckiSafe-Image enthalten weder Go-Quellen, Go-Toolchain noch Agent-Binary.
+- Produktivhost benötigt nur das geprüfte GitHub-Release-Binary, Config, einmaliges Secret, Policy und State-Verzeichnis.
+- Rollout und Rollback sind ohne automatische Veränderung bestehender Facility-Legacy-Hooks möglich; 24-Stunden-Beobachtung, Testrepository und Null-Offene-Jobs-Gate sind nachweisbar abgeschlossen.
