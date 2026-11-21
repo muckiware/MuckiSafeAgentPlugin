@@ -1,0 +1,15 @@
+# Exclude development-only paths from the plugin distribution archive
+/.github export-ignore
+/tests export-ignore
+/agent export-ignore
+/docs export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/phpunit.xml.dist export-ignore
+
+# Normalize line endings for text files
+*.php text eol=lf
+*.xml text eol=lf
+*.json text eol=lf
+*.sh text eol=lf
+*.md text eol=lf

@@ -1,0 +1,62 @@
+{
+	"name" : "muckiware/mucki-safe-agent-plugin",
+	"description" : "MuckiSafe Agent plugin for Shopware 6 - agent control plane for MuckiSafe host actions",
+	"keywords": [
+		"shopware6",
+		"muckisafe",
+		"backup",
+		"agent",
+		"facility",
+		"plugin"
+	],
+	"type" : "shopware-platform-plugin",
+	"license" : "MIT",
+	"authors": [
+	{
+		"name": "muckiware"
+	}
+	],
+	"extra" : {
+		"shopware-plugin-class" : "MuckiSafeAgentPlugin\\MuckiSafeAgentPlugin",
+		"copyright" : "(c) by muckiware",
+		"label" : {
+			"de-DE" : "MuckiSafe Agent Erweiterung",
+			"en-GB" : "MuckiSafe Agent Plugin"
+		}
+	},
+	"require" : {
+		"php" : "~8.3.0 || ~8.4.0 || ~8.5.0",
+		"ext-sodium": "*",
+		"shopware/core": "~6.6.10.14 || ~6.7.6",
+		"muckiware/facility-plugin": "^0.11"
+	},
+	"require-dev" : {
+		"phpunit/phpunit" : "^11.5",
+		"phpstan/phpstan" : "*"
+	},
+	"autoload" : {
+		"psr-4" : {
+			"MuckiSafeAgentPlugin\\" : "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"MuckiSafeAgentPlugin\\": "tests/"
+		}
+	},
+	"config": {
+		"allow-plugins": {
+			"symfony/runtime": true,
+			"php-http/discovery": false
+		}
+	},
+	"scripts": {
+		"test:unit": "@php vendor/bin/phpunit --testsuite Unit --no-progress -c phpunit.xml.dist",
+		"test:integration": "@php vendor/bin/phpunit --testsuite Integration --no-progress -c phpunit.xml.dist",
+		"test": [
+			"@test:unit",
+			"@test:integration"
+		],
+		"phpstan": "phpstan analyse -n --no-progress"
+	}
+}
