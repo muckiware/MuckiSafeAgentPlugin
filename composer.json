@@ -31,6 +31,8 @@
 		"muckiware/facility-plugin": "^0.11"
 	},
 	"require-dev" : {
+		"ext-pcntl": "*",
+		"ext-posix": "*",
 		"phpunit/phpunit" : "^11.5",
 		"phpstan/phpstan" : "*"
 	},

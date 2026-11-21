@@ -7,5 +7,24 @@
         <service id="MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard" public="true">
             <argument type="service" id="plugin.repository"/>
         </service>
+
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentHost\AgentHostDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_host"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentAction\AgentActionDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_action"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook\AgentRepositoryHookDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_repository_hook"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentBackupRun\AgentBackupRunDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_backup_run"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentJob\AgentJobDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_job"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Core\Content\AgentNonce\AgentNonceDefinition">
+            <tag name="shopware.entity.definition" entity="muwa_agent_nonce"/>
+        </service>
     </services>
 </container>
