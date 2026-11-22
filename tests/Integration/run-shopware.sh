@@ -141,8 +141,8 @@ run_inner() {
         "muckiware/mucki-safe-agent-plugin:*" \
         --no-interaction --no-scripts --no-progress
 
-    log "composer require --dev phpunit/phpstan"
-    composer require --dev phpunit/phpunit:^11.5 phpstan/phpstan \
+    log "composer require --dev phpunit/phpstan/browser-kit"
+    composer require --dev phpunit/phpunit:^11.5 phpstan/phpstan symfony/browser-kit \
         --no-interaction --no-scripts --no-progress
 
     # 6) Plan contract: composer refuses to remove the facility package while

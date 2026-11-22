@@ -1,6 +1,7 @@
 {
 	"name" : "muckiware/mucki-safe-agent-plugin",
 	"description" : "MuckiSafe Agent plugin for Shopware 6 - agent control plane for MuckiSafe host actions",
+	"version": "v0.1.0",
 	"keywords": [
 		"shopware6",
 		"muckisafe",
@@ -34,7 +35,8 @@
 		"ext-pcntl": "*",
 		"ext-posix": "*",
 		"phpunit/phpunit" : "^11.5",
-		"phpstan/phpstan" : "*"
+		"phpstan/phpstan" : "*",
+		"symfony/browser-kit": "^7.2"
 	},
 	"autoload" : {
 		"psr-4" : {

@@ -15,6 +15,12 @@ env:
   MODULE_NAME: MuckiSafeAgentPlugin
   MODULE_DIR: custom/plugins/MuckiSafeAgentPlugin
   COMPOSER_NAME: muckiware/mucki-safe-agent-plugin
+  # Required dependency, kept identical to tests/Integration/run-shopware.sh
+  FACILITY_MODULE_NAME: MuckiFacilityPlugin
+  FACILITY_REPOSITORY: muckiware/MuckiFacilityPlugin
+  FACILITY_COMPOSER_NAME: muckiware/facility-plugin
+  FACILITY_REF: v0.11.0
+  FACILITY_CONSTRAINT: ^0.11
   TEST_DATABASE_URL: "mysql://root:root@127.0.0.1:3306/db_test"
 
 jobs:
@@ -36,13 +42,19 @@ jobs:
           MYSQL_ROOT_PASSWORD: root
         ports:
           - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
 
     steps:
       - name: Install PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-versions }}
-          extensions: mbstring, xdebug, curl, dom, fileinfo, gd, iconv, intl, json, xml, mbstring, pdo, phar, zip, sodium, pdo_mysql
+          extensions: mbstring, curl, dom, fileinfo, gd, iconv, intl, json, xml, pdo, phar, zip, sodium, pdo_mysql, pcntl, posix
+          coverage: none
           tools: composer:v2
 
       - name: "Check PHP Version"
@@ -63,7 +75,14 @@ jobs:
       - name: "Checkout ${{ env.COMPOSER_NAME }}"
         uses: actions/checkout@v7
         with:
-          path: custom/plugins/${{ env.MODULE_NAME }}
+          path: ${{ env.MODULE_DIR }}
+
+      - name: "Checkout ${{ env.FACILITY_COMPOSER_NAME }}@${{ env.FACILITY_REF }}"
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ env.FACILITY_REPOSITORY }}
+          ref: ${{ env.FACILITY_REF }}
+          path: custom/plugins/${{ env.FACILITY_MODULE_NAME }}
 
       - name: "Get composer cache directory"
         id: composer-cache
@@ -83,14 +102,19 @@ jobs:
           composer req shopware/administration:${{ matrix.shopware-versions }} shopware/core:${{ matrix.shopware-versions }} shopware/elasticsearch:${{ matrix.shopware-versions }} shopware/storefront:${{ matrix.shopware-versions }} --no-update
           composer install --no-dev
 
-      - name: "Install DEV-Tools"
-        working-directory: custom/plugins/${{ env.MODULE_NAME }}
+      - name: "Install plugins"
+        # Both plugins resolve through the custom/plugins/* path repository of shopware/production
         run: |
-          composer remove shopware/* --no-update
-          composer install
+          composer require "${{ env.FACILITY_COMPOSER_NAME }}:${{ env.FACILITY_CONSTRAINT }}" "${{ env.COMPOSER_NAME }}:*" \
+            --no-interaction --no-scripts --no-progress
 
       - name: "Install code-Tools"
-        run: composer req phpunit/phpunit:^11.5 phpstan/phpstan
+        run: |
+          composer require --dev phpunit/phpunit:^11.5 phpstan/phpstan symfony/browser-kit \
+            --no-interaction --no-scripts --no-progress
+
+      - name: "Verify composer graph"
+        run: composer why ${{ env.FACILITY_COMPOSER_NAME }} | grep -q '${{ env.COMPOSER_NAME }}'
 
       - name: "Install Shopware"
         run: |
@@ -100,5 +124,11 @@ jobs:
           echo APP_SECRET=secretf0rt3st >> .env
           bin/console system:install --basic-setup
 
+      - name: "Install and activate plugins"
+        run: |
+          bin/console plugin:refresh
+          bin/console plugin:install --activate ${{ env.FACILITY_MODULE_NAME }}
+          bin/console plugin:install --activate ${{ env.MODULE_NAME }}
+
       - name: "Run PHPUnit Tests"
-        run: ./vendor/bin/phpunit --configuration="custom/plugins/${{ env.MODULE_NAME }}"
+        run: ./vendor/bin/phpunit --configuration="${{ env.MODULE_DIR }}/phpunit.xml.dist" --no-progress

@@ -13,6 +13,7 @@ namespace MuckiSafeAgentPlugin;
 
 use Doctrine\DBAL\Connection;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795305600CreateSecretState;
 use MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
@@ -38,7 +39,11 @@ class MuckiSafeAgentPlugin extends Plugin
             throw new \RuntimeException('Doctrine connection is unavailable.');
         }
 
-        foreach (Migration1795132800CreateAgentSchema::TABLES as $table) {
+        $tables = array_merge(
+            Migration1795132800CreateAgentSchema::TABLES,
+            [Migration1795305600CreateSecretState::TABLE_NAME]
+        );
+        foreach ($tables as $table) {
             $connection->executeStatement('DROP TABLE IF EXISTS `' . $table . '`');
         }
     }

@@ -8,6 +8,40 @@
             <argument type="service" id="plugin.repository"/>
         </service>
 
+        <service id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider" public="true">
+            <argument>%env(string:MUWA_AGENT_ENCRYPTION_KEYRING)%</argument>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Secret\SecretCipher" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretCipher"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretCipher"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretCipher"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor"/>
+            <tag name="controller.service_arguments"/>
+        </service>
+
         <service id="MuckiSafeAgentPlugin\Core\Content\AgentHost\AgentHostDefinition">
             <tag name="shopware.entity.definition" entity="muwa_agent_host"/>
         </service>

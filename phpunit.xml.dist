@@ -13,9 +13,11 @@
         <ini name="error_reporting" value="-1"/>
         <server name="KERNEL_CLASS" value="Shopware\Core\Kernel"/>
         <env name="APP_ENV" value="test"/>
+        <env name="APP_SECRET" value="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" force="true"/>
         <env name="APP_DEBUG" value="1"/>
         <env name="SHELL_VERBOSITY" value="1"/>
         <env name="SYMFONY_DEPRECATIONS_HELPER" value="disabled"/>
+        <env name="MUWA_AGENT_ENCRYPTION_KEYRING" value="{&quot;active&quot;:2,&quot;keys&quot;:{&quot;1&quot;:&quot;000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f&quot;,&quot;2&quot;:&quot;ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff&quot;}}" force="true"/>
     </php>
     <testsuites>
         <testsuite name="Unit">
