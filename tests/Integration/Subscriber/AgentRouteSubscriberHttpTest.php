@@ -1,0 +1,267 @@
+<?php declare(strict_types=1);
+/**
+ * MuckiSafeAgentPlugin
+ *
+ * @category   SW6 Plugin
+ * @package    MuckiSafeAgent
+ * @copyright  Copyright (c) 2026 by Muckiware
+ * @license    MIT
+ * @author     Muckiware
+ *
+ */
+
+namespace MuckiSafeAgentPlugin\tests\Integration\Subscriber;
+
+require_once dirname(__DIR__, 3) . '/src/Migration/Migration1795132800CreateAgentSchema.php';
+require_once dirname(__DIR__, 3) . '/src/Migration/Migration1795305600CreateSecretState.php';
+foreach (glob(dirname(__DIR__, 3) . '/src/Service/Auth/*.php') ?: [] as $authServiceFile) {
+    require_once $authServiceFile;
+}
+foreach (glob(dirname(__DIR__, 3) . '/src/Service/Secret/*.php') ?: [] as $secretServiceFile) {
+    require_once $secretServiceFile;
+}
+foreach (glob(dirname(__DIR__, 3) . '/src/Subscriber/*.php') ?: [] as $subscriberFile) {
+    require_once $subscriberFile;
+}
+
+use Doctrine\DBAL\Connection;
+use MuckiSafeAgentPlugin\Core\Content\AgentNonce\AgentNonceDefinition;
+use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795305600CreateSecretState;
+use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
+use MuckiSafeAgentPlugin\Service\Auth\AgentProtocol;
+use MuckiSafeAgentPlugin\Service\Auth\RequestSignature;
+use MuckiSafeAgentPlugin\Service\Auth\ResponseSignature;
+use MuckiSafeAgentPlugin\Service\Auth\ResponseVerdict;
+use MuckiSafeAgentPlugin\Service\Auth\SignatureEnvelope;
+use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
+use PHPUnit\Framework\TestCase;
+use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
+use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
+use Shopware\Core\Framework\Test\TestCaseHelper\TestBrowser;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\HttpFoundation\Response;
+
+/**
+ * Task 9 RED: kernel wiring of both subscribers. Unknown keys get the single
+ * allowed unsigned empty 401; every response after key resolution — including
+ * error DTOs and kernel exceptions — is signed; replays are rejected with a
+ * signed REPLAY_DETECTED; both subscribers are registered with the normative
+ * priorities.
+ */
+final class AgentRouteSubscriberHttpTest extends TestCase
+{
+    use KernelTestBehaviour;
+
+    private const HEARTBEAT_PATH = '/api/_action/muwa/agent/v1/heartbeat';
+
+    private Connection $connection;
+
+    /** @var array{id: string, keyId: string, secret: string} */
+    private array $agent;
+
+    private string $secretBytes;
+
+    protected function setUp(): void
+    {
+        $connection = self::getContainer()->get(Connection::class);
+        self::assertInstanceOf(Connection::class, $connection);
+        $this->connection = $connection;
+        $this->dropSchema();
+        (new Migration1795132800CreateAgentSchema())->update($this->connection);
+        (new Migration1795305600CreateSecretState())->update($this->connection);
+
+        $provisioner = self::getContainer()->get(AgentProvisioner::class);
+        self::assertInstanceOf(AgentProvisioner::class, $provisioner);
+        $agent = $provisioner->provision('subscriber-http-host');
+        self::assertIsArray($agent);
+        $this->agent = $agent;
+        $this->secretBytes = sodium_base642bin($this->agent['secret'], SODIUM_BASE64_VARIANT_URLSAFE_NO_PADDING, '');
+        self::assertSame(32, strlen($this->secretBytes));
+    }
+
+    protected function tearDown(): void
+    {
+        $this->dropSchema();
+    }
+
+    private function dropSchema(): void
+    {
+        $this->connection->executeStatement(
+            'DROP TABLE IF EXISTS `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
+            . '`muwa_agent_repository_hook`, `muwa_agent_action`, `muwa_agent_host`, `muwa_agent_secret_state`'
+        );
+    }
+
+    private function browser(): TestBrowser
+    {
+        $browser = KernelLifecycleManager::createBrowser(self::getKernel(), false);
+        $browser->followRedirects(true);
+
+        return $browser;
+    }
+
+    /**
+     * @param array<string, string> $overrides keyId, timestamp, nonce, signature
+     */
+    private function signedAgentRequest(
+        TestBrowser $browser,
+        string $path,
+        string $body,
+        array $overrides = []
+    ): void {
+        $keyId = $overrides['keyId'] ?? $this->agent['keyId'];
+        $timestamp = $overrides['timestamp'] ?? (string) (time() - 30);
+        $nonce = $overrides['nonce'] ?? ('http-nonce-' . bin2hex(random_bytes(8)) . 'paddingpad');
+        $envelope = SignatureEnvelope::forBody($path, $body, $timestamp, $nonce);
+        $signature = $overrides['signature'] ?? hash_hmac('sha256', (new RequestSignature())->baseString('POST', $envelope), $this->secretBytes);
+
+        $browser->request('POST', $path, [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_MUCKI_AGENT_KEY' => $keyId,
+            'HTTP_X_MUCKI_AGENT_TIMESTAMP' => $timestamp,
+            'HTTP_X_MUCKI_AGENT_NONCE' => $nonce,
+            'HTTP_X_MUCKI_AGENT_SIGNATURE' => $signature,
+        ], $body);
+    }
+
+    /** @return array<string, mixed> */
+    private function decodeJson(Response $response): array
+    {
+        $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertIsArray($payload);
+
+        return $payload;
+    }
+
+    private function nonceCount(): int
+    {
+        return (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `' . AgentNonceDefinition::ENTITY_NAME . '`');
+    }
+
+    public function testUnknownKeyReceivesEmptyUnsigned401WithNoStore(): void
+    {
+        $browser = $this->browser();
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}', [
+            'keyId' => bin2hex(random_bytes(16)),
+        ]);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+        self::assertSame('', (string) $response->getContent());
+        self::assertNull($response->headers->get('X-Mucki-Agent-Signature'));
+        self::assertNull($response->headers->get('X-Mucki-Agent-Request-Nonce'));
+        self::assertNull($response->headers->get('X-Mucki-Agent-Timestamp'));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control', ''));
+        self::assertSame(0, $this->nonceCount());
+    }
+
+    public function testInvalidSignatureReceivesSignedErrorDto(): void
+    {
+        $browser = $this->browser();
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{"tampered":true}', [
+            'signature' => str_repeat('a', 64),
+        ]);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+        $payload = $this->decodeJson($response);
+        self::assertSame(AgentErrorCode::SignatureInvalid->value, $payload['code']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
+        self::assertArrayHasKey('message', $payload);
+
+        self::assertNotNull($response->headers->get('X-Mucki-Agent-Signature'));
+        $requestNonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertNotNull($requestNonce);
+        self::assertSame($requestNonce, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
+
+        $verdict = (new ResponseSignature())->classify($this->secretBytes, (string) $requestNonce, self::HEARTBEAT_PATH, $response);
+        self::assertSame(ResponseVerdict::Accept, $verdict);
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control', ''));
+        self::assertSame(0, $this->nonceCount());
+    }
+
+    public function testReplayedRequestIsRejectedWithSignedReplayError(): void
+    {
+        $browser = $this->browser();
+        $nonce = 'replay-http-' . bin2hex(random_bytes(8)) . 'paddingpad';
+        $timestamp = (string) (time() - 30);
+
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}', [
+            'nonce' => $nonce,
+            'timestamp' => $timestamp,
+        ]);
+        self::assertSame(1, $this->nonceCount());
+
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}', [
+            'nonce' => $nonce,
+            'timestamp' => $timestamp,
+        ]);
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
+        $payload = $this->decodeJson($response);
+        self::assertSame(AgentErrorCode::ReplayDetected->value, $payload['code']);
+
+        $requestNonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertNotNull($requestNonce);
+        self::assertSame($requestNonce, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
+        $verdict = (new ResponseSignature())->classify($this->secretBytes, (string) $requestNonce, self::HEARTBEAT_PATH, $response);
+        self::assertSame(ResponseVerdict::Accept, $verdict);
+        self::assertSame(1, $this->nonceCount());
+    }
+
+    public function testKernelExceptionAfterAuthenticationReceivesSignedStableErrorDto(): void
+    {
+        $browser = $this->browser();
+        // valid signature, but the controller routes do not exist before task 10C:
+        // the router throws, the exception subscriber must answer with a
+        // stable signed JSON DTO instead of an HTML stack trace page.
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}');
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
+        $payload = $this->decodeJson($response);
+        self::assertSame(AgentErrorCode::InternalError->value, $payload['code']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
+        self::assertSame(1, $this->nonceCount());
+
+        $requestNonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertNotNull($requestNonce);
+        self::assertSame($requestNonce, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
+        $verdict = (new ResponseSignature())->classify($this->secretBytes, (string) $requestNonce, self::HEARTBEAT_PATH, $response);
+        self::assertSame(ResponseVerdict::Accept, $verdict);
+    }
+
+    public function testBothSubscribersAreRegisteredWithNormativePriorities(): void
+    {
+        $authentication = self::getContainer()->get(\MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber::class);
+        self::assertInstanceOf(\MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber::class, $authentication);
+        $signing = self::getContainer()->get(\MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber::class);
+        self::assertInstanceOf(\MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber::class, $signing);
+
+        $dispatcher = self::getContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+
+        self::assertSame(256, $dispatcher->getListenerPriority('kernel.request', [$authentication, 'onKernelRequest']));
+        self::assertSame(-256, $dispatcher->getListenerPriority('kernel.response', [$signing, 'onKernelResponse']));
+        self::assertNotNull($dispatcher->getListenerPriority('kernel.exception', [$signing, 'onKernelException']));
+
+        $requestListeners = $dispatcher->getListeners('kernel.request');
+        self::assertContains([$authentication, 'onKernelRequest'], $requestListeners, 'authentication subscriber missing from kernel.request');
+    }
+
+    public function testUnrelatedRouteIsNotTouchedByTheSubscribers(): void
+    {
+        $browser = $this->browser();
+        // outside the agent route prefix: neither subscriber may interfere,
+        // the plain 404 of a missing route is neither signed nor no-store
+        $browser->request('POST', '/api/_action/muwa/agentxyz', [], [], ['CONTENT_TYPE' => 'application/json'], '{}');
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_NOT_FOUND, $response->getStatusCode());
+        self::assertNull($response->headers->get('X-Mucki-Agent-Signature'));
+        self::assertStringNotContainsString('no-store', (string) $response->headers->get('Cache-Control', ''));
+        self::assertStringNotContainsString('MUWA_AGENT_', (string) $response->getContent());
+    }
+}
