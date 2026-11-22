@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentJob;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentJobEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $backupRunId;
     protected string $agentActionId;
     protected string $facilityRepositoryId;

@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentNonce;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentNonceEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $agentId;
     protected string $nonce;
     protected \DateTimeInterface $expiresAt;

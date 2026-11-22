@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentHost;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentHostEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $name;
     protected bool $enabled;
     protected string $keyId;

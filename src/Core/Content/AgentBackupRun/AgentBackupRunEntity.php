@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentBackupRun;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentBackupRunEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $facilityRepositoryId;
     protected string $source;
     protected string $idempotencyKey;

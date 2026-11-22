@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentRepositoryHookEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $facilityRepositoryId;
     protected string $phase;
     protected string $agentHostId;

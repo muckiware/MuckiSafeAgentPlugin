@@ -13,9 +13,12 @@
 namespace MuckiSafeAgentPlugin\Core\Content\AgentAction;
 
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
 final class AgentActionEntity extends Entity
 {
+    use EntityIdTrait;
+
     protected string $technicalName;
     protected string $label;
     protected bool $enabled;

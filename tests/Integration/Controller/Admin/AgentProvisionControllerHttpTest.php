@@ -25,6 +25,7 @@ use Shopware\Core\Framework\Test\TestCaseBase\AdminApiTestBehaviour;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
 use Shopware\Core\Framework\Test\TestCaseHelper\TestBrowser;
+use Shopware\Core\Framework\Util\Hasher;
 use Symfony\Component\HttpFoundation\Response;
 
 final class AgentProvisionControllerHttpTest extends TestCase
@@ -176,6 +177,12 @@ final class AgentProvisionControllerHttpTest extends TestCase
         $browser = KernelLifecycleManager::createBrowser(self::getKernel(), false);
         $browser->followRedirects();
         $browser->setServerParameters(['HTTP_ACCEPT' => ['application/vnd.api+json,application/json']]);
+        // authorizeBrowser() derives a deterministic e-mail from the permissions and this test runs without a
+        // transaction (setUp executes DDL); remove the user of a previous run so repeated runs stay green.
+        $this->connection->executeStatement(
+            'DELETE FROM `user` WHERE `email` = :email',
+            ['email' => Hasher::hash($permissions) . '@example.com']
+        );
         try {
             $this->authorizeBrowser($browser, [], $permissions);
         } catch (\Throwable $exception) {
