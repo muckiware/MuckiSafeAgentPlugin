@@ -212,9 +212,10 @@ final class AgentSubscriberTest extends TestCase
         $agent = $this->agentContext();
         $request = $this->agentRequest();
         $request->attributes->set(AgentAuthenticationSubscriber::AUTH_ATTRIBUTE, $agent);
-        $event = new ExceptionEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, new \RuntimeException('boom'));
+        $signing = new AgentResponseSigningSubscriber(new ResponseSignature());
 
-        (new AgentResponseSigningSubscriber(new ResponseSignature()))->onKernelException($event);
+        $event = new ExceptionEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, new \RuntimeException('boom'));
+        $signing->onKernelException($event);
 
         self::assertTrue($event->hasResponse());
         $response = $event->getResponse();
@@ -222,16 +223,17 @@ final class AgentSubscriberTest extends TestCase
         $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($payload);
         self::assertSame(AgentErrorCode::InternalError->value, $payload['code']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
 
-        // the set response still passes the client-side verifier
-        $requestTimestamp = $response->headers->get('X-Mucki-Agent-Timestamp');
-        self::assertIsString($requestTimestamp);
-        $expected = hash_hmac(
-            'sha256',
-            (new ResponseSignature())->baseString(500, SignatureEnvelope::forBody(self::HEARTBEAT_PATH, (string) $response->getContent(), $requestTimestamp, self::NONCE)),
-            self::SECRET
-        );
-        self::assertSame($expected, $response->headers->get('X-Mucki-Agent-Signature'));
+        // the kernel passes exception responses through kernel.response,
+        // where the same subscriber signs them — emulate that pass here
+        $responseEvent = new ResponseEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
+        $signing->onKernelResponse($responseEvent);
+
+        $verdict = (new ResponseSignature())->classify(self::SECRET, self::NONCE, self::HEARTBEAT_PATH, $response);
+        self::assertSame(ResponseVerdict::Accept, $verdict);
+        self::assertSame(self::NONCE, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control', ''));
     }
 
     public function testExceptionSubscriberWithoutKeyResolutionLeavesResponseUntouched(): void

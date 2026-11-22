@@ -237,7 +237,10 @@ final class ReplayGuardTest extends TestCase
                     fwrite($childSocket, $outcome . "\n");
                     fflush($childSocket);
                     fclose($childSocket);
-                    exit(0);
+                    // SIGKILL skips PHP destructors on purpose: they would
+                    // close the inherited parent PDO socket and take the
+                    // parent's MySQL connection down with it
+                    posix_kill(getmypid(), SIGKILL);
                 }
                 fclose($childSocket);
                 stream_set_timeout($parentSocket, 15);

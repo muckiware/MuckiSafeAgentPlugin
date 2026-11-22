@@ -37,6 +37,23 @@
         </service>
         <service id="MuckiSafeAgentPlugin\Service\Auth\RequestSignature"/>
         <service id="MuckiSafeAgentPlugin\Service\Auth\ResponseSignature"/>
+        <service id="MuckiSafeAgentPlugin\Service\Auth\ReplayGuard">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Auth\AgentAuthenticator">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretCipher"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ReplayGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\RequestSignature"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\AgentAuthenticator"/>
+            <tag name="kernel.event_subscriber"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ResponseSignature"/>
+            <tag name="kernel.event_subscriber"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator"/>

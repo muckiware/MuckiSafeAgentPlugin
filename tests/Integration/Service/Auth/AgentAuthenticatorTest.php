@@ -125,8 +125,15 @@ final class AgentAuthenticatorTest extends TestCase
         $method = (string) ($overrides['method'] ?? 'POST');
         $query = (string) ($overrides['query'] ?? '');
 
-        $envelope = SignatureEnvelope::forBody($path, $body, $timestamp, $nonce);
-        $signature = (string) ($overrides['signature'] ?? hash_hmac('sha256', (new RequestSignature())->baseString($method, $envelope), $this->secretBytes));
+        try {
+            $envelope = SignatureEnvelope::forBody($path, $body, $timestamp, $nonce);
+            $signature = (string) ($overrides['signature'] ?? hash_hmac('sha256', (new RequestSignature())->baseString($method, $envelope), $this->secretBytes));
+        } catch (\MuckiSafeAgentPlugin\Exception\SignatureException) {
+            // non-canonical paths and non-POST methods cannot build a valid
+            // basis string at all; the authenticator rejects them before the
+            // signature check, so a syntactically valid dummy is fine
+            $signature = str_repeat('0', 64);
+        }
 
         $server = (array) ($overrides['server'] ?? []);
         $server = array_merge($server, [
@@ -284,6 +291,7 @@ final class AgentAuthenticatorTest extends TestCase
         $edgeTimestamp = self::FIXED_NOW - 60;
         $first = $this->signedRequest(self::HEARTBEAT_PATH, '{}', ['timestamp' => (string) $edgeTimestamp]);
         $this->authenticate($first);
+        $firstNonce = (string) $first->headers->get('X-Mucki-Agent-Nonce');
 
         $expectedExpiry = (new \DateTimeImmutable('@' . ($edgeTimestamp + 65)))->format('Y-m-d H:i:s.v');
         $row = $this->connection->fetchAssociative('SELECT `expires_at` FROM `' . AgentNonceDefinition::ENTITY_NAME . '`');
@@ -294,7 +302,10 @@ final class AgentAuthenticatorTest extends TestCase
         self::assertSame(0, $replayGuard->cleanupExpired(self::FIXED_NOW, 100));
         self::assertSame(1, $this->nonceCount());
 
-        $second = $this->signedRequest(self::HEARTBEAT_PATH, '{}', ['timestamp' => (string) $edgeTimestamp]);
+        $second = $this->signedRequest(self::HEARTBEAT_PATH, '{}', [
+            'timestamp' => (string) $edgeTimestamp,
+            'nonce' => $firstNonce,
+        ]);
         $this->expectError($second, AgentErrorCode::ReplayDetected);
     }
 
@@ -320,7 +331,7 @@ final class AgentAuthenticatorTest extends TestCase
 
     public function testMalformedNonceFormatIsRejectedBeforeSignatureCheck(): void
     {
-        $request = $this->signedRequest(self::HEARTBEAT_PATH, '{}', ['nonce' => 'short']);
+        $request = $this->signedRequest(self::HEARTBEAT_PATH, '{}');
         $request->headers->set('X-Mucki-Agent-Nonce', 'short');
 
         $this->expectError($request, AgentErrorCode::RequestInvalid);
@@ -384,11 +395,21 @@ final class AgentAuthenticatorTest extends TestCase
         $this->expectError($request, AgentErrorCode::RequestInvalid);
     }
 
+    public function testCommaFoldedContentLengthIsRejected(): void
+    {
+        // php-fpm/apache fold duplicated request headers into one comma-joined
+        // value; that folded form is ambiguous framing as well
+        $request = $this->signedRequest(self::HEARTBEAT_PATH, '{}');
+        $request->headers->set('Content-Length', '2, 3');
+
+        $this->expectError($request, AgentErrorCode::RequestInvalid);
+    }
+
     public function testContentLengthWithTransferEncodingIsRejected(): void
     {
         $request = $this->signedRequest(self::HEARTBEAT_PATH, '{}');
+        $request->headers->set('Content-Length', '2');
         $request->headers->set('Transfer-Encoding', 'chunked');
-        self::assertNotNull($request->headers->get('Content-Length'));
 
         $this->expectError($request, AgentErrorCode::RequestInvalid);
     }
