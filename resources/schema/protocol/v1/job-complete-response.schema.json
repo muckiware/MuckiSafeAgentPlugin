@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:protocol:v1:job-complete-response",
+  "title": "Job completion response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "accepted",
+    "terminalStatus"
+  ],
+  "properties": {
+    "accepted": {
+      "type": "boolean",
+      "enum": [
+        true
+      ]
+    },
+    "terminalStatus": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "timed_out",
+        "unknown"
+      ]
+    }
+  }
+}

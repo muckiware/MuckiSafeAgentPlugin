@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:protocol:v1:job-complete-request",
+  "title": "Job completion request",
+  "description": "Byte limits are enforced by the server beyond this schema: summary at most 4096 UTF-8 bytes, decoded tails at most 65536 bytes per stream, raw body at most 262144 bytes. Outcome succeeded carries no tail or encoding fields; ambiguous carries no tails. A tail requires its encoding field.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claimToken",
+    "leaseVersion",
+    "outcome",
+    "resultCode",
+    "summary"
+  ],
+  "properties": {
+    "claimToken": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "leaseVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed",
+        "timed_out",
+        "ambiguous"
+      ]
+    },
+    "resultCode": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "stdoutTail": {
+      "type": "string",
+      "maxLength": 87384
+    },
+    "stderrTail": {
+      "type": "string",
+      "maxLength": 87384
+    },
+    "stdoutEncoding": {
+      "type": "string",
+      "enum": [
+        "utf-8",
+        "base64"
+      ]
+    },
+    "stderrEncoding": {
+      "type": "string",
+      "enum": [
+        "utf-8",
+        "base64"
+      ]
+    }
+  }
+}

@@ -1,0 +1,1662 @@
+{
+  "version": 1,
+  "description": "Shared MUWA-HMAC-V1 signing vectors. Consumed unchanged by PHP (tests/Unit/Service/Auth) and Go (agent/internal/api). Secrets are base64url without padding and are decoded to exactly 32 bytes before use as HMAC-SHA256 key; base strings use LF between fields and no trailing LF. bodyRepeat means the raw body is 'char' repeated 'count' times.",
+  "constants": {
+    "requestDomain": "MUWA-HMAC-V1-REQUEST",
+    "responseDomain": "MUWA-HMAC-V1-RESPONSE",
+    "timestampWindowSeconds": 60,
+    "replayCleanupToleranceSeconds": 5,
+    "noncePattern": "^[A-Za-z0-9_-]{32,64}$",
+    "keyIdPattern": "^[0-9a-f]{32}$",
+    "signaturePattern": "^[0-9a-f]{64}$",
+    "requestHeaders": {
+      "key": "X-Mucki-Agent-Key",
+      "timestamp": "X-Mucki-Agent-Timestamp",
+      "nonce": "X-Mucki-Agent-Nonce",
+      "signature": "X-Mucki-Agent-Signature"
+    },
+    "responseHeaders": {
+      "timestamp": "X-Mucki-Agent-Timestamp",
+      "requestNonce": "X-Mucki-Agent-Request-Nonce",
+      "signature": "X-Mucki-Agent-Signature"
+    }
+  },
+  "keys": {
+    "valid": [
+      {
+        "name": "sequential bytes",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      {
+        "name": "hashed bytes with url alphabet",
+        "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+        "keyHex": "4f1dc806a1443ab99b6185c6fb7af2d42abef065bcc1a1f78602a7746acbf9dc"
+      }
+    ],
+    "invalid": [
+      {
+        "name": "empty",
+        "secret": "",
+        "error": "invalid_key"
+      },
+      {
+        "name": "padding character",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+        "error": "invalid_key"
+      },
+      {
+        "name": "standard alphabet plus",
+        "secret": "+AECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "error": "invalid_key"
+      },
+      {
+        "name": "standard alphabet slash",
+        "secret": "/AECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "error": "invalid_key"
+      },
+      {
+        "name": "31 bytes",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHg",
+        "error": "invalid_key"
+      },
+      {
+        "name": "33 bytes",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g",
+        "error": "invalid_key"
+      },
+      {
+        "name": "non-canonical trailing bits",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh9",
+        "error": "invalid_key"
+      },
+      {
+        "name": "leading whitespace",
+        "secret": " AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+        "error": "invalid_key"
+      },
+      {
+        "name": "trailing newline",
+        "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\n",
+        "error": "invalid_key"
+      },
+      {
+        "name": "hex instead of base64url",
+        "secret": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        "error": "invalid_key"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "name": "host heartbeat",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "body": "{\"agentVersion\":\"1.0.0\",\"platform\":\"linux\",\"arch\":\"amd64\",\"capabilities\":[\"service.control\"],\"agentTime\":\"2026-11-22T12:00:00Z\"}",
+      "bodySha256": "e0e8b55f0da8c96a0e40050d5ed851696bd54d247fd50c4ca21e2ad49aeb103a",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/heartbeat\ne0e8b55f0da8c96a0e40050d5ed851696bd54d247fd50c4ca21e2ad49aeb103a\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "cbf1776ba4829cc57de0cd16add6988de97f50a55ecbac68c7b41c3f0cc680c9",
+      "signatureWithSecretTextAsKey": "11701cf17b309a81cf955f8b6babfdf877a84e64c4b5c0a57699ea8c9b4f7b5c"
+    },
+    {
+      "name": "job claim",
+      "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "body": "{\"maxJobs\":1}",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/claim\ncbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391",
+      "signatureWithSecretTextAsKey": "c5c50301cde535ba5b67867edc0a49f4cb3e69b9cb65ff565c6e57a33add9eb1"
+    },
+    {
+      "name": "job start",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/start",
+      "body": "{\"claimToken\":\"Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw\",\"leaseVersion\":3}",
+      "bodySha256": "e72ffab006d5ef07aef1bed2ac9143c23fe2de21ed8e7bfff006426fe96c646a",
+      "timestamp": "1795132861",
+      "nonce": "abcdefghijklmnopqrstuvwxyz012345",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/start\ne72ffab006d5ef07aef1bed2ac9143c23fe2de21ed8e7bfff006426fe96c646a\n1795132861\nabcdefghijklmnopqrstuvwxyz012345",
+      "signature": "f58f9610a0776e4248acb6054446648a6c611c55fc0dca4196c513374e1845d9",
+      "signatureWithSecretTextAsKey": "b6a09a3f1a8fcf69671131e4ed555ec461fe7c01647a71ed703a92501e162da8"
+    },
+    {
+      "name": "job lease heartbeat uuid v4",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/3f2b9c1e-8d4a-4b6f-a1c2-9e8d7f6a5b4c/heartbeat",
+      "body": "{\"claimToken\":\"Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw\",\"leaseVersion\":3}",
+      "bodySha256": "e72ffab006d5ef07aef1bed2ac9143c23fe2de21ed8e7bfff006426fe96c646a",
+      "timestamp": "1795132800",
+      "nonce": "A-B_Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123_",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/3f2b9c1e-8d4a-4b6f-a1c2-9e8d7f6a5b4c/heartbeat\ne72ffab006d5ef07aef1bed2ac9143c23fe2de21ed8e7bfff006426fe96c646a\n1795132800\nA-B_Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123_",
+      "signature": "b5f5f35b4bedf9ba6b633fed8dacf3d4486a676bd8c19972eaa07615cadd6426",
+      "signatureWithSecretTextAsKey": "60f7a4cbd72ace81b0d3df62dabb687c5c8c8d8a5c3e3477a6439040881f8a0b"
+    },
+    {
+      "name": "job complete utf-8 body",
+      "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete",
+      "body": "{\"claimToken\":\"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8\",\"leaseVersion\":1,\"outcome\":\"failed\",\"resultCode\":\"step_failed\",\"summary\":\"Größe überschritten ✓ 🚀\",\"stderrTail\":\"line\\nnext\",\"stderrEncoding\":\"utf-8\"}",
+      "bodySha256": "d2ac91ccd86c75cb1ca3cc9ee40a9e6109d8e086ee72574fc1b69dbdd45f28e4",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete\nd2ac91ccd86c75cb1ca3cc9ee40a9e6109d8e086ee72574fc1b69dbdd45f28e4\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "d4c72c8087766a05647ff24d11d07fc0b905941b0a79f161c107a8bb72349939",
+      "signatureWithSecretTextAsKey": "7d1a5704bab2cd1c23d8a957e8c0cad3475d6e93a42539e66f0f61547ca3fc3d"
+    },
+    {
+      "name": "empty body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/claim\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "cc37d376786ba6e96b30459a98a0194828366c88b488c31010fcea883a126a8c",
+      "signatureWithSecretTextAsKey": "5a14f504cb2da3539a73f4be4372aa3148027ee6e53600bdca30de3d2a062fac"
+    },
+    {
+      "name": "body with trailing newline",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "body": "{\"maxJobs\":1}\n",
+      "bodySha256": "da3a6de1439b9eb16f83bfb3cbfd72f3789f4a6fd4840e391598ea1ac4e66ef7",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/claim\nda3a6de1439b9eb16f83bfb3cbfd72f3789f4a6fd4840e391598ea1ac4e66ef7\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "4049f4ffb20aa74ea2255fd1bc9ddec5a24bc8d1c1374984dca1215ed2d581f4",
+      "signatureWithSecretTextAsKey": "585a79235aa6434e1f374f58f3aafb9680af4c019cdb4b60fb459acf0a04ffda"
+    },
+    {
+      "name": "timestamp zero",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "body": "{}",
+      "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "timestamp": "0",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/heartbeat\n44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\n0\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "ef6e0616799fd8c0da7e0c0a04299f562fc74543afc3fbcb8ee773a4c296b9b7",
+      "signatureWithSecretTextAsKey": "a3c0b5e42e62dd86c90580fe1d92d70138bcfadb56af471be6c4657dfc011fbf"
+    },
+    {
+      "name": "heartbeat body at limit",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodyRepeat": {
+        "char": "a",
+        "count": 16384
+      },
+      "bodySha256": "f3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/heartbeat\nf3336bea752b5a28743033dd2c844a4a63fba08871aaee2586a2bf2d69be83a2\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "6bb97738640ad84411a160a7f26e238d4f228dd02db16401cc88b892b8ea8516",
+      "signatureWithSecretTextAsKey": "bc76f2ea9800cb4ec45469c8622d9eb7e2d6bb6e93ba87adc7616e81c552845c"
+    },
+    {
+      "name": "complete body at limit",
+      "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete",
+      "bodyRepeat": {
+        "char": "b",
+        "count": 262144
+      },
+      "bodySha256": "9e240eace59e902546b5c777cec8b8c20017915d2e0ec85580d5cc7b586da7dd",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "baseString": "MUWA-HMAC-V1-REQUEST\nPOST\n/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete\n9e240eace59e902546b5c777cec8b8c20017915d2e0ec85580d5cc7b586da7dd\n1795132800\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "signature": "c9eb592dc43b7d0da5351cd1e4565f3d6a8e80deaf594661ab8c102eeeef1c1f",
+      "signatureWithSecretTextAsKey": "0dbe5c4b605d287176c5c1595a08507c9a6f2abd7eff2d6fd4a74914fb8e6245"
+    }
+  ],
+  "invalidRequests": [
+    {
+      "name": "lowercase method",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "post",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_method"
+    },
+    {
+      "name": "GET method",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "GET",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_method"
+    },
+    {
+      "name": "empty method",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_method"
+    },
+    {
+      "name": "query string",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim?debug=1",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_path"
+    },
+    {
+      "name": "percent encoding",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs%2Fclaim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_path"
+    },
+    {
+      "name": "trailing slash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim/",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_path"
+    },
+    {
+      "name": "double slash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1//jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_path"
+    },
+    {
+      "name": "dot segment",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/./jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_path"
+    },
+    {
+      "name": "key of 31 bytes",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_key"
+    },
+    {
+      "name": "key of 33 bytes",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f00",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_key"
+    },
+    {
+      "name": "uppercase body hash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "CBB3762E5A274471E34772E5E1BEE90FEC0CEAF3DA8121998F6BBB28DDFCE898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_body_hash"
+    },
+    {
+      "name": "short body hash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce89",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_body_hash"
+    },
+    {
+      "name": "empty body hash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_body_hash"
+    },
+    {
+      "name": "timestamp leading zero",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "01795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp double zero",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "00",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp plus sign",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "+1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp negative",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "-1",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp empty",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp leading space",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": " 1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp trailing newline",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800\n",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp decimal fraction",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800.0",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp exponent",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1e9",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp hex",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "0x6B0",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp int64 overflow",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "9223372036854775808",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "timestamp twenty digits",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "12345678901234567890",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "nonce 31 chars",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "abcdefghijklmnopqrstuvwxyz01234",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce 65 chars",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "A-B_Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123_a",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce empty",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce padding",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWz=",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce plus",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "+F3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce slash",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "/F3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce dot",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": ".F3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce space",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": " F3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce comma joined",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "abcdefghijklmnopqrstuvwxyz012345, abcdefghijklmnopqrstuvwxyz012345",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce non-ascii",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "äF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "nonce trailing newline",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "method": "POST",
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "bodySha256": "cbb3762e5a274471e34772e5e1bee90fec0ceaf3da8121998f6bbb28ddfce898",
+      "timestamp": "1795132800",
+      "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n",
+      "error": "invalid_nonce"
+    }
+  ],
+  "requestHeaders": [
+    {
+      "name": "all headers once",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "expect": {
+        "keyId": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "timestamp": "1795132800",
+        "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+        "signature": "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+      }
+    },
+    {
+      "name": "lowercase header names",
+      "headers": {
+        "content-type": [
+          "application/json"
+        ],
+        "accept": [
+          "application/json"
+        ],
+        "x-mucki-agent-key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "x-mucki-agent-timestamp": [
+          "1795132800"
+        ],
+        "x-mucki-agent-nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "x-mucki-agent-signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "expect": {
+        "keyId": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "timestamp": "1795132800",
+        "nonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+        "signature": "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+      }
+    },
+    {
+      "name": "missing X-Mucki-Agent-Key",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "missing_header"
+    },
+    {
+      "name": "duplicate identical X-Mucki-Agent-Key",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "duplicate_header"
+    },
+    {
+      "name": "missing X-Mucki-Agent-Timestamp",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "missing_header"
+    },
+    {
+      "name": "duplicate identical X-Mucki-Agent-Timestamp",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800",
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "duplicate_header"
+    },
+    {
+      "name": "missing X-Mucki-Agent-Nonce",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "missing_header"
+    },
+    {
+      "name": "duplicate identical X-Mucki-Agent-Nonce",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "duplicate_header"
+    },
+    {
+      "name": "missing X-Mucki-Agent-Signature",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ]
+      },
+      "error": "missing_header"
+    },
+    {
+      "name": "duplicate identical X-Mucki-Agent-Signature",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391",
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "duplicate_header"
+    },
+    {
+      "name": "duplicate different nonce",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+          "abcdefghijklmnopqrstuvwxyz012345"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "duplicate_header"
+    },
+    {
+      "name": "comma joined nonce",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA, abcdefghijklmnopqrstuvwxyz012345"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "uppercase key id",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0F1E2D3C4B5A69788796A5B4C3D2E1F0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_key_id"
+    },
+    {
+      "name": "short key id",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_key_id"
+    },
+    {
+      "name": "empty key id",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          ""
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_key_id"
+    },
+    {
+      "name": "uppercase signature",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963EEA652E72AA0F7E3F8EF18F8D1BD232AA2008E81509B4AB6C23209E7E391"
+        ]
+      },
+      "error": "invalid_signature_format"
+    },
+    {
+      "name": "short signature",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e39"
+        ]
+      },
+      "error": "invalid_signature_format"
+    },
+    {
+      "name": "prefixed signature",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "sha256=4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_signature_format"
+    },
+    {
+      "name": "timestamp leading zero",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "01795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "empty nonce",
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "Accept": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Key": [
+          "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132800"
+        ],
+        "X-Mucki-Agent-Nonce": [
+          ""
+        ],
+        "X-Mucki-Agent-Signature": [
+          "4963eea652e72aa0f7e3f8ef18f8d1bd232aa2008e81509b4ab6c23209e7e391"
+        ]
+      },
+      "error": "invalid_nonce"
+    }
+  ],
+  "responses": [
+    {
+      "name": "host heartbeat ok",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "status": 200,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "bodySha256": "70696f8310e930e19d98892b32c54bbdacdf43abe43923110bcf26f68d16030d",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n200\n/api/_action/muwa/agent/v1/heartbeat\n70696f8310e930e19d98892b32c54bbdacdf43abe43923110bcf26f68d16030d\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n1795132801",
+      "signature": "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+    },
+    {
+      "name": "claim without job",
+      "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+      "status": 200,
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "body": "{\"job\":null}",
+      "bodySha256": "72229363a5e2c1bf1ac241c2b00804fc7751a251aeb218c2bec8a0a25ff5dda3",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n200\n/api/_action/muwa/agent/v1/jobs/claim\n72229363a5e2c1bf1ac241c2b00804fc7751a251aeb218c2bec8a0a25ff5dda3\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n1795132801",
+      "signature": "7892dcf975ad08a01739e5849efb63c571240c21c7bbd3fe92f127398cf2ce57"
+    },
+    {
+      "name": "claim conflict",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "status": 409,
+      "path": "/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/start",
+      "body": "{\"code\":\"MUWA_AGENT_CLAIM_CONFLICT\",\"message\":\"Claim is stale.\",\"traceId\":\"0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7c\"}",
+      "bodySha256": "a5eedce06b69a79c33d0e2316639b7eb45a8e4daa2218f389bf05fc9659520cb",
+      "requestNonce": "abcdefghijklmnopqrstuvwxyz012345",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n409\n/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/start\na5eedce06b69a79c33d0e2316639b7eb45a8e4daa2218f389bf05fc9659520cb\nabcdefghijklmnopqrstuvwxyz012345\n1795132801",
+      "signature": "8ed47faaa5210b37c8b3fd00ac43d2e22a9a67540835a24072b38fcadf70cb4e"
+    },
+    {
+      "name": "body too large",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "status": 413,
+      "path": "/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete",
+      "body": "{\"code\":\"MUWA_AGENT_BODY_TOO_LARGE\",\"message\":\"Request body exceeds the route limit.\",\"traceId\":\"0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7d\"}",
+      "bodySha256": "f3bdcba44653148286aa14207fb2ced666c00b49a4a049490d2115fd42a1b157",
+      "requestNonce": "A-B_Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123_",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n413\n/api/_action/muwa/agent/v1/jobs/0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b/complete\nf3bdcba44653148286aa14207fb2ced666c00b49a4a049490d2115fd42a1b157\nA-B_Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx0123_\n1795132801",
+      "signature": "8c2518f576a9ed59b6434d596aa540f8c835eb8f82b89ccde718fa7f98b6ed97"
+    },
+    {
+      "name": "signed unauthenticated",
+      "secret": "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw",
+      "status": 401,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "body": "{\"code\":\"MUWA_AGENT_SIGNATURE_INVALID\",\"message\":\"Signature mismatch.\",\"traceId\":\"0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7e\"}",
+      "bodySha256": "3d70304ed8aa40f5b6f343fa1f7f06476101fc2a8717013bf372ce4c97f3bc56",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n401\n/api/_action/muwa/agent/v1/heartbeat\n3d70304ed8aa40f5b6f343fa1f7f06476101fc2a8717013bf372ce4c97f3bc56\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n1795132801",
+      "signature": "5b2fd8a71da6bc8ff418c96aa7cd2914fd7d15724b488c5a1bf1fb52ca5e748d"
+    },
+    {
+      "name": "signed empty 401",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "status": 401,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "body": "",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n401\n/api/_action/muwa/agent/v1/heartbeat\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n1795132801",
+      "signature": "966afcbfd061c259459cbe36cf876e6acb1e461ccc1d167df1bfba808e4a7031"
+    },
+    {
+      "name": "internal error",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "status": 500,
+      "path": "/api/_action/muwa/agent/v1/jobs/claim",
+      "body": "{\"code\":\"MUWA_AGENT_INTERNAL_ERROR\",\"message\":\"Internal error.\",\"traceId\":\"0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7f\"}",
+      "bodySha256": "828888305abed0cc1a98a17d006df51bbba06f493f55abefe6c1423fa7128b32",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "0",
+      "baseString": "MUWA-HMAC-V1-RESPONSE\n500\n/api/_action/muwa/agent/v1/jobs/claim\n828888305abed0cc1a98a17d006df51bbba06f493f55abefe6c1423fa7128b32\nnF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA\n0",
+      "signature": "ff50d4123093cc5c17f5c898af16a803bc639f062404f09c5a7bc802f0bb741b"
+    }
+  ],
+  "invalidResponses": [
+    {
+      "name": "status 99",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 99,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "error": "invalid_status"
+    },
+    {
+      "name": "status 600",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 600,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "error": "invalid_status"
+    },
+    {
+      "name": "status 0",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 0,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "error": "invalid_status"
+    },
+    {
+      "name": "negative status",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": -200,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "error": "invalid_status"
+    },
+    {
+      "name": "request nonce too short",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 200,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "abcdefghijklmnopqrstuvwxyz01234",
+      "timestamp": "1795132801",
+      "error": "invalid_nonce"
+    },
+    {
+      "name": "timestamp leading zero",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 200,
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "01795132801",
+      "error": "invalid_timestamp"
+    },
+    {
+      "name": "path with query",
+      "keyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "status": 200,
+      "path": "/api/_action/muwa/agent/v1/heartbeat?x=1",
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "timestamp": "1795132801",
+      "error": "invalid_path"
+    }
+  ],
+  "responseVerification": [
+    {
+      "name": "valid signed 200",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "accept"
+    },
+    {
+      "name": "valid signed 401 with error body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "2344f1b7488ceaf8b81d2ffe207879a1a023193fc1755e0e323d1db3c9532426"
+        ]
+      },
+      "body": "{\"code\":\"MUWA_AGENT_REPLAY_DETECTED\",\"message\":\"Replay.\",\"traceId\":\"0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b\"}",
+      "verdict": "accept"
+    },
+    {
+      "name": "valid signed empty 401",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "966afcbfd061c259459cbe36cf876e6acb1e461ccc1d167df1bfba808e4a7031"
+        ]
+      },
+      "body": "",
+      "verdict": "accept"
+    },
+    {
+      "name": "unknown key: unsigned empty 401",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {},
+      "body": "",
+      "verdict": "terminal_unauthenticated"
+    },
+    {
+      "name": "unknown key: unsigned empty 401 with content type",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ]
+      },
+      "body": "",
+      "verdict": "terminal_unauthenticated"
+    },
+    {
+      "name": "unsigned 401 with body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ]
+      },
+      "body": "{}",
+      "verdict": "reject"
+    },
+    {
+      "name": "unsigned 401 with whitespace body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {},
+      "body": " ",
+      "verdict": "reject"
+    },
+    {
+      "name": "unsigned empty 403",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 403,
+      "headers": {},
+      "body": "",
+      "verdict": "reject"
+    },
+    {
+      "name": "unsigned empty 200",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {},
+      "body": "",
+      "verdict": "reject"
+    },
+    {
+      "name": "unsigned 200 with body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "unsigned empty 500",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 500,
+      "headers": {},
+      "body": "",
+      "verdict": "reject"
+    },
+    {
+      "name": "empty 401 with partial signature headers",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ]
+      },
+      "body": "",
+      "verdict": "reject"
+    },
+    {
+      "name": "empty 401 with signature header only",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 401,
+      "headers": {
+        "X-Mucki-Agent-Signature": [
+          "0000000000000000000000000000000000000000000000000000000000000000"
+        ]
+      },
+      "body": "",
+      "verdict": "reject"
+    },
+    {
+      "name": "tampered body",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":16}",
+      "verdict": "reject"
+    },
+    {
+      "name": "tampered status",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 201,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "signed for other path",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "873a798721b7f8f981fa59c5fdb455ffb53ebd8307f9d6e9d18288b276277620"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "signed for other request nonce",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "abcdefghijklmnopqrstuvwxyz012345"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "3e8660359163aeaabf4a56e3dbb42fdd2064c9bd2186b5954242eea9b9140a78"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "header carries other request nonce",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "abcdefghijklmnopqrstuvwxyz012345"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "3e8660359163aeaabf4a56e3dbb42fdd2064c9bd2186b5954242eea9b9140a78"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "signed with other key",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "ef4db5b1a23496f3dbe7ee01cd541ebdd578d36fddf36e0717529fcfd930e850"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "uppercase signature",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9B290FC01E81F6BDF067FD15347E34F934143AF7ADAB6EBC29AE931E8201FF8E"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "duplicate signature header",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e",
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "duplicate timestamp header",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "1795132801",
+          "1795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "9b290fc01e81f6bdf067fd15347e34f934143af7adab6ebc29ae931e8201ff8e"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    },
+    {
+      "name": "timestamp with leading zero",
+      "secret": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+      "requestNonce": "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA",
+      "path": "/api/_action/muwa/agent/v1/heartbeat",
+      "status": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ],
+        "X-Mucki-Agent-Timestamp": [
+          "01795132801"
+        ],
+        "X-Mucki-Agent-Request-Nonce": [
+          "nF3kQ9xZ2bL7wT1vR8mY4cH6pJ0sD5aG-eU_iO3qWzA"
+        ],
+        "X-Mucki-Agent-Signature": [
+          "f08479e65983f462d661bc10d7bd01fc9fcda49412eca2b8ac391485566e2761"
+        ]
+      },
+      "body": "{\"serverTime\":\"2026-11-22T12:00:01Z\",\"pollAfterSeconds\":15}",
+      "verdict": "reject"
+    }
+  ]
+}

@@ -74,7 +74,8 @@ class AgentProvisioner
             throw new \InvalidArgumentException('Invalid agent secret.');
         }
         $decoded = base64_decode(strtr($secret, '-_', '+/') . '=', true);
-        if (!is_string($decoded) || strlen($decoded) !== 32) {
+        // Reject non-canonical encodings (non-zero unused trailing bits) so that exactly one text maps to a key.
+        if (!is_string($decoded) || strlen($decoded) !== 32 || !hash_equals(self::encodeSecret($decoded), $secret)) {
             throw new \InvalidArgumentException('Invalid agent secret.');
         }
         return $decoded;

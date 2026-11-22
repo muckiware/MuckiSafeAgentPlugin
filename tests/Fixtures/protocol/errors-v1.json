@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "description": "Stable agent error codes. Every response produced after successful key resolution, including 4xx/5xx, is signed and carries the error-response DTO {code, message, traceId}. The only unsigned answer is the unknownKey case.",
+  "errorResponseSchema": "error-response",
+  "codes": [
+    { "code": "MUWA_AGENT_REQUEST_INVALID", "httpStatus": 400, "signed": true, "description": "Malformed security headers, query string, non-canonical path, Content-Encoding or ambiguous Content-Length/Transfer-Encoding." },
+    { "code": "MUWA_AGENT_PAYLOAD_INVALID", "httpStatus": 400, "signed": true, "description": "Body is not valid JSON or violates the route DTO schema." },
+    { "code": "MUWA_AGENT_PROTOCOL_UNSUPPORTED", "httpStatus": 400, "signed": true, "description": "Unknown enum value or unsupported protocol feature." },
+    { "code": "MUWA_AGENT_SIGNATURE_INVALID", "httpStatus": 401, "signed": true, "description": "Request signature does not match the resolved agent secret." },
+    { "code": "MUWA_AGENT_TIMESTAMP_OUT_OF_WINDOW", "httpStatus": 401, "signed": true, "description": "Request timestamp is outside the +/-60 second window." },
+    { "code": "MUWA_AGENT_REPLAY_DETECTED", "httpStatus": 401, "signed": true, "description": "Request nonce was already used by this agent." },
+    { "code": "MUWA_AGENT_REVOKED", "httpStatus": 401, "signed": true, "description": "Agent is revoked or disabled." },
+    { "code": "MUWA_AGENT_METHOD_NOT_ALLOWED", "httpStatus": 405, "signed": true, "description": "Agent routes accept POST only." },
+    { "code": "MUWA_AGENT_CLAIM_CONFLICT", "httpStatus": 409, "signed": true, "description": "Stale or foreign claim: target agent, claim token hash, lease version or lease expiry do not match." },
+    { "code": "MUWA_AGENT_BODY_TOO_LARGE", "httpStatus": 413, "signed": true, "description": "Raw body exceeds the route limit; the body is hashed streaming and the signature authenticated first." },
+    { "code": "MUWA_AGENT_UNSUPPORTED_MEDIA_TYPE", "httpStatus": 415, "signed": true, "description": "Content-Type is not application/json." },
+    { "code": "MUWA_AGENT_INTERNAL_ERROR", "httpStatus": 500, "signed": true, "description": "Unexpected server error." },
+    { "code": "MUWA_AGENT_UNAVAILABLE", "httpStatus": 503, "signed": true, "description": "Control plane temporarily unavailable, e.g. facility_unavailable." }
+  ],
+  "unknownKey": {
+    "httpStatus": 401,
+    "body": "",
+    "signed": false,
+    "clientVerdict": "terminal_unauthenticated",
+    "description": "X-Mucki-Agent-Key is unknown or so malformed that no secret can be resolved. Exactly one unsigned 401 with empty body is allowed; the agent treats it as terminal transport/authentication failure and never reads semantics or job/action data from it."
+  }
+}

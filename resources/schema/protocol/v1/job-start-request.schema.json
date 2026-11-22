@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:protocol:v1:job-start-request",
+  "title": "Job start request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claimToken",
+    "leaseVersion"
+  ],
+  "properties": {
+    "claimToken": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "leaseVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    }
+  }
+}

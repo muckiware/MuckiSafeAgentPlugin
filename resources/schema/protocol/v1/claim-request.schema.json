@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:protocol:v1:claim-request",
+  "title": "Job claim request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "maxJobs"
+  ],
+  "properties": {
+    "maxJobs": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    }
+  }
+}

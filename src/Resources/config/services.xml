@@ -35,6 +35,8 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Auth\RequestSignature"/>
+        <service id="MuckiSafeAgentPlugin\Service\Auth\ResponseSignature"/>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator"/>

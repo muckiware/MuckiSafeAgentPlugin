@@ -11,6 +11,9 @@
  */
 namespace MuckiSafeAgentPlugin\tests\Unit\Service\Secret;
 
+use MuckiSafeAgentPlugin\Service\Auth\RequestSignature;
+use MuckiSafeAgentPlugin\Service\Auth\ResponseSignature;
+use MuckiSafeAgentPlugin\Service\Auth\SignatureFormat;
 use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
 use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
 use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider;
@@ -30,6 +33,12 @@ final class SensitiveParameterTest extends TestCase
         yield 'encode secret' => [AgentProvisioner::class, 'encodeSecret', 'secret'];
         yield 'decode secret' => [AgentProvisioner::class, 'decodeSecret', 'secret'];
         yield 'candidate secret' => [AgentSecretRotator::class, 'isCurrentSecret', 'candidate'];
+        yield 'signature key format' => [SignatureFormat::class, 'assertKey', 'key'];
+        yield 'request signing key' => [RequestSignature::class, 'sign', 'key'];
+        yield 'request verification key' => [RequestSignature::class, 'verify', 'key'];
+        yield 'response signing key' => [ResponseSignature::class, 'sign', 'key'];
+        yield 'response header key' => [ResponseSignature::class, 'headers', 'key'];
+        yield 'response verification key' => [ResponseSignature::class, 'classify', 'key'];
     }
 
     #[DataProvider('sensitiveParameters')]
