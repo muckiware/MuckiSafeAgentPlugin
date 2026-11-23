@@ -1,0 +1,667 @@
+{
+  "version": 1,
+  "description": "Shared PHP/Go V1 Action DSL vectors.",
+  "cases": [
+    {
+      "name": "bitwarden-pre",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "docker.container.exec",
+            "containerAlias": "bitwarden-mssql",
+            "commandAlias": "bitwarden-full-backup",
+            "arguments": {}
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "bitwarden-data",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "bitwarden-current-full-backup"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "bitwarden-required-files"
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"arguments\":{},\"commandAlias\":\"bitwarden-full-backup\",\"containerAlias\":\"bitwarden-mssql\",\"primitive\":\"docker.container.exec\"},{\"pathAlias\":\"bitwarden-data\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"checkAlias\":\"bitwarden-current-full-backup\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"bitwarden-required-files\",\"primitive\":\"filesystem.assert-readable\"}],\"version\":1}",
+      "sha256": "902b1baa1ecd6717a4f1ae097954071592686b1c2c4c89c773a4085e59cfc5a9"
+    },
+    {
+      "name": "bitwarden-post",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "bitwarden-config",
+            "expectedStatuses": [
+              200
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"endpointAlias\":\"bitwarden-config\",\"expectedStatuses\":[200],\"primitive\":\"service.wait-http\"}],\"version\":1}",
+      "sha256": "7c039ad80d32e26edcffb98c903e8c1f985903688030384b49743447cb25efd8"
+    },
+    {
+      "name": "jellyfin-pre",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.control",
+            "serviceAlias": "jellyfin",
+            "operation": "stop"
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-config",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "jellyfin-required-data"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "jellyfin-required-config"
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"operation\":\"stop\",\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\"},{\"pathAlias\":\"jellyfin-data\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"pathAlias\":\"jellyfin-config\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"checkAlias\":\"jellyfin-required-data\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"jellyfin-required-config\",\"primitive\":\"filesystem.assert-readable\"}],\"version\":1}",
+      "sha256": "93098754e8110ba69bbb2be8a9e8e9c991570b0f0d03fc716ff84eb740a8ba9b"
+    },
+    {
+      "name": "jellyfin-finally",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.control",
+            "serviceAlias": "jellyfin",
+            "operation": "start"
+          },
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "jellyfin-public-info",
+            "expectedStatuses": [
+              200
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"operation\":\"start\",\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\"},{\"endpointAlias\":\"jellyfin-public-info\",\"expectedStatuses\":[200],\"primitive\":\"service.wait-http\"}],\"version\":1}",
+      "sha256": "490981430d8bbab3402714440e55e1c0ec172f94bdc0d325110cbfc07af56af0"
+    },
+    {
+      "name": "immich-pre",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.write-pipeline",
+            "sourceCommandAlias": "immich-pg-dump",
+            "destinationAlias": "immich-manual-backups",
+            "transforms": [
+              "gzip"
+            ],
+            "nameFromRunId": true
+          },
+          {
+            "primitive": "file.retention",
+            "pathAlias": "immich-upload",
+            "manifestAlias": "immich-manual-backups",
+            "keep": 10
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "immich-upload",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "immich-thumbs",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "immich-encoded-video",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "immich-profile",
+            "principalAlias": "muckisafe-backup"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "immich-upload-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "immich-thumbs-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "immich-encoded-video-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "immich-profile-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "immich-current-run-output"
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"destinationAlias\":\"immich-manual-backups\",\"nameFromRunId\":true,\"primitive\":\"file.write-pipeline\",\"sourceCommandAlias\":\"immich-pg-dump\",\"transforms\":[\"gzip\"]},{\"keep\":10,\"manifestAlias\":\"immich-manual-backups\",\"pathAlias\":\"immich-upload\",\"primitive\":\"file.retention\"},{\"pathAlias\":\"immich-upload\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"pathAlias\":\"immich-thumbs\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"pathAlias\":\"immich-encoded-video\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"pathAlias\":\"immich-profile\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\"},{\"checkAlias\":\"immich-upload-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"immich-thumbs-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"immich-encoded-video-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"immich-profile-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"immich-current-run-output\",\"primitive\":\"filesystem.assert-readable\"}],\"version\":1}",
+      "sha256": "a3078fae987461f017cb075c8f8a8d4bd5897435710a0c3c7fb20043c774e8da"
+    },
+    {
+      "name": "immich-post",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "immich-version",
+            "expectedStatuses": [
+              200
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"endpointAlias\":\"immich-version\",\"expectedStatuses\":[200],\"primitive\":\"service.wait-http\"}],\"version\":1}",
+      "sha256": "fdf4d1999240d22941c732b14ba93fd17be09a03a31e35b15e9435cb0ee181bc"
+    },
+    {
+      "name": "paperless-pre",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "paperless-data-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "paperless-media-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "paperless-export-required-readable"
+          },
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "paperless-consume-required-readable"
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"checkAlias\":\"paperless-data-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"paperless-media-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"paperless-export-required-readable\",\"primitive\":\"filesystem.assert-readable\"},{\"checkAlias\":\"paperless-consume-required-readable\",\"primitive\":\"filesystem.assert-readable\"}],\"version\":1}",
+      "sha256": "95c0269534eeeba633771cff933b83a7f9b71d14038886611618f94982418e38"
+    },
+    {
+      "name": "paperless-post",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200,
+              302
+            ]
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"endpointAlias\":\"paperless-web\",\"expectedStatuses\":[200,302],\"primitive\":\"service.wait-http\"}],\"version\":1}",
+      "sha256": "8a1a63a30f93d3ade730a77a8f4cd1de80b6c3c1086f89ebd43a1c9df04d34b6"
+    },
+    {
+      "name": "unicode-relative-path",
+      "valid": true,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "muckisafe-backup",
+            "relativePath": "Über<&>/日期 x"
+          }
+        ]
+      },
+      "canonical": "{\"steps\":[{\"pathAlias\":\"jellyfin-data\",\"primitive\":\"filesystem.acl.read\",\"principalAlias\":\"muckisafe-backup\",\"relativePath\":\"Über<&>/日期 x\"}],\"version\":1}",
+      "sha256": "a93eb7c14e82cf3ba09339515d69e5f11099273c09d01fb7285885a1e510f807"
+    },
+    {
+      "name": "version-as-string",
+      "valid": false,
+      "definition": {
+        "version": "1",
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200,
+              302
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "unsupported-version",
+      "valid": false,
+      "definition": {
+        "version": 2,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-steps",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": []
+      }
+    },
+    {
+      "name": "unknown-top-level-field",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200
+            ]
+          }
+        ],
+        "name": "x"
+      }
+    },
+    {
+      "name": "generic-command-primitive",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "command.exec",
+            "executable": "/bin/sh",
+            "arguments": [
+              "-c",
+              "id"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "raw-container-name",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "docker.container.exec",
+            "containerAlias": "immich_postgres",
+            "commandAlias": "dump",
+            "arguments": {}
+          }
+        ]
+      }
+    },
+    {
+      "name": "raw-executable-smuggling",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "docker.container.exec",
+            "containerAlias": "immich-postgres",
+            "commandAlias": "dump",
+            "arguments": {},
+            "executable": "/bin/sh"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nonempty-untyped-arguments",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "docker.container.exec",
+            "containerAlias": "immich-postgres",
+            "commandAlias": "dump",
+            "arguments": {
+              "database": "immich"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "absolute-path",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "backup",
+            "relativePath": "/etc"
+          }
+        ]
+      }
+    },
+    {
+      "name": "traversal-path",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "backup",
+            "relativePath": "data/../etc"
+          }
+        ]
+      }
+    },
+    {
+      "name": "repeated-path-separator",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "backup",
+            "relativePath": "data//db"
+          }
+        ]
+      }
+    },
+    {
+      "name": "backslash-path",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": "backup",
+            "relativePath": "data\\db"
+          }
+        ]
+      }
+    },
+    {
+      "name": "numeric-principal",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.acl.read",
+            "pathAlias": "jellyfin-data",
+            "principalAlias": 33
+          }
+        ]
+      }
+    },
+    {
+      "name": "assert-readable-caller-glob",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "filesystem.assert-readable",
+            "checkAlias": "bitwarden-check",
+            "glob": "*.BAK"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cgroup-condition-is-policy-only",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.control",
+            "serviceAlias": "jellyfin",
+            "operation": "stop",
+            "requireEmptyCgroupAfterStop": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "http-url-is-policy-only",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200
+            ],
+            "url": "http://127.0.0.1"
+          }
+        ]
+      }
+    },
+    {
+      "name": "http-unsorted-statuses",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              302,
+              200
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "http-duplicate-status",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200,
+              200
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "http-status-float",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "service.wait-http",
+            "endpointAlias": "paperless-web",
+            "expectedStatuses": [
+              200.0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "retention-selector-smuggling",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.retention",
+            "pathAlias": "immich-upload",
+            "manifestAlias": "immich-manual-backups",
+            "keep": 10,
+            "glob": "*.gz"
+          }
+        ]
+      }
+    },
+    {
+      "name": "retention-zero",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.retention",
+            "pathAlias": "immich-upload",
+            "manifestAlias": "immich-manual-backups",
+            "keep": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "retention-float",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.retention",
+            "pathAlias": "immich-upload",
+            "manifestAlias": "immich-manual-backups",
+            "keep": 10.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "pipeline-free-transform",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.write-pipeline",
+            "sourceCommandAlias": "immich-pg-dump",
+            "destinationAlias": "immich-manual-backups",
+            "transforms": [
+              "gzip --best"
+            ],
+            "nameFromRunId": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "pipeline-run-id-false",
+      "valid": false,
+      "definition": {
+        "version": 1,
+        "steps": [
+          {
+            "primitive": "file.write-pipeline",
+            "sourceCommandAlias": "immich-pg-dump",
+            "destinationAlias": "immich-manual-backups",
+            "transforms": [
+              "gzip"
+            ],
+            "nameFromRunId": false
+          }
+        ]
+      }
+    }
+  ],
+  "rawCases": [
+    {
+      "name": "duplicate-root-key",
+      "valid": false,
+      "input": "{\"version\":1,\"version\":1,\"steps\":[{\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\",\"operation\":\"stop\"}]}"
+    },
+    {
+      "name": "duplicate-escaped-key",
+      "valid": false,
+      "input": "{\"version\":1,\"steps\":[{\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\",\"oper\\u0061tion\":\"stop\",\"operation\":\"stop\"}]}"
+    },
+    {
+      "name": "trailing-value",
+      "valid": false,
+      "input": "{\"version\":1,\"steps\":[]}{}"
+    },
+    {
+      "name": "bom",
+      "valid": false,
+      "input": "﻿{\"version\":1,\"steps\":[]}"
+    },
+    {
+      "name": "raw-limit-exact",
+      "valid": true,
+      "input": "{\"version\":1,\"steps\":[{\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\",\"operation\":\"stop\"}]}",
+      "paddingBytes": 262044
+    },
+    {
+      "name": "raw-limit-plus-one",
+      "valid": false,
+      "input": "{\"version\":1,\"steps\":[{\"primitive\":\"service.control\",\"serviceAlias\":\"jellyfin\",\"operation\":\"stop\"}]}",
+      "paddingBytes": 262045
+    }
+  ]
+}

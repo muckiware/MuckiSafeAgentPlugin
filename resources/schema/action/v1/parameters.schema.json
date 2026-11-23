@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:action-parameters:v1",
+  "title": "MuckiSafe Agent Action Parameters V1",
+  "description": "Task-10A actions have no caller-controlled parameters. New parameters require a later typed schema revision.",
+  "type": "object",
+  "additionalProperties": false,
+  "maxProperties": 0
+}

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "V1 has no caller-controlled action parameters.",
+  "cases": [
+    {"name": "empty object", "valid": true, "parameters": {}},
+    {"name": "untyped string", "valid": false, "parameters": {"value": "x"}},
+    {"name": "raw path", "valid": false, "parameters": {"path": "/etc"}},
+    {"name": "shell arguments", "valid": false, "parameters": {"arguments": ["-c", "id"]}},
+    {"name": "array instead of object", "valid": false, "parameters": []}
+  ]
+}

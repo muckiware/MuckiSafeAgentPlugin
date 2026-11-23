@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:muwa:agent:action:v1",
+  "title": "MuckiSafe Agent Action DSL V1",
+  "$comment": "Draft 2020-12 structural schema plus MUWA semantic annotations. x-muwa-integerToken rejects fraction/exponent spellings and x-muwa-strictAscending requires strictly ascending arrays; both are enforced by the mandatory strict PHP/Go decoders because standard JSON Schema intentionally treats 10 and 10.0 as the same integer value and cannot compare adjacent array items.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "steps"],
+  "properties": {
+    "version": {"const": 1},
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/serviceControl"},
+          {"$ref": "#/$defs/serviceWaitHttp"},
+          {"$ref": "#/$defs/dockerContainerExec"},
+          {"$ref": "#/$defs/filesystemAclRead"},
+          {"$ref": "#/$defs/filesystemAssertReadable"},
+          {"$ref": "#/$defs/fileWritePipeline"},
+          {"$ref": "#/$defs/fileRetention"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "alias": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$", "maxLength": 64},
+    "relativePath": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?:\\.|(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f]).+)$"},
+    "serviceControl": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "serviceAlias", "operation"],
+      "properties": {
+        "primitive": {"const": "service.control"},
+        "serviceAlias": {"$ref": "#/$defs/alias"},
+        "operation": {"enum": ["start", "stop", "restart"]}
+      }
+    },
+    "serviceWaitHttp": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "endpointAlias", "expectedStatuses"],
+      "properties": {
+        "primitive": {"const": "service.wait-http"},
+        "endpointAlias": {"$ref": "#/$defs/alias"},
+        "expectedStatuses": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "x-muwa-strictAscending": true, "items": {"type": "integer", "minimum": 100, "maximum": 599, "x-muwa-integerToken": true}}
+      }
+    },
+    "dockerContainerExec": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "containerAlias", "commandAlias", "arguments"],
+      "properties": {
+        "primitive": {"const": "docker.container.exec"},
+        "containerAlias": {"$ref": "#/$defs/alias"},
+        "commandAlias": {"$ref": "#/$defs/alias"},
+        "arguments": {"type": "object", "additionalProperties": false, "maxProperties": 0}
+      }
+    },
+    "filesystemAclRead": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "pathAlias", "principalAlias"],
+      "properties": {
+        "primitive": {"const": "filesystem.acl.read"},
+        "pathAlias": {"$ref": "#/$defs/alias"},
+        "principalAlias": {"$ref": "#/$defs/alias"},
+        "relativePath": {"$ref": "#/$defs/relativePath"}
+      }
+    },
+    "filesystemAssertReadable": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "checkAlias"],
+      "properties": {
+        "primitive": {"const": "filesystem.assert-readable"},
+        "checkAlias": {"$ref": "#/$defs/alias"}
+      }
+    },
+    "fileWritePipeline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "sourceCommandAlias", "destinationAlias", "transforms", "nameFromRunId"],
+      "properties": {
+        "primitive": {"const": "file.write-pipeline"},
+        "sourceCommandAlias": {"$ref": "#/$defs/alias"},
+        "destinationAlias": {"$ref": "#/$defs/alias"},
+        "transforms": {"type": "array", "prefixItems": [{"const": "gzip"}], "items": false, "minItems": 1, "maxItems": 1},
+        "nameFromRunId": {"const": true}
+      }
+    },
+    "fileRetention": {
+      "type": "object", "additionalProperties": false,
+      "required": ["primitive", "pathAlias", "manifestAlias", "keep"],
+      "properties": {
+        "primitive": {"const": "file.retention"},
+        "pathAlias": {"$ref": "#/$defs/alias"},
+        "manifestAlias": {"$ref": "#/$defs/alias"},
+        "keep": {"type": "integer", "minimum": 1, "maximum": 10000, "x-muwa-integerToken": true}
+      }
+    }
+  }
+}

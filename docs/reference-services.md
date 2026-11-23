@@ -3,8 +3,8 @@
 This document records the four Gate-B reference workloads before the Action DSL
 is defined. It is an **evidence-only, untested inventory**: live-host access and
 execution/E2E tests were explicitly waived. The reference execution contracts
-are fixed by this inventory, but the Action-DSL/primitive schema remains blocked
-until the Task-10B amendments listed below are made. The machine-readable
+are fixed by this inventory. Task 10B incorporated the two amendments below
+into the frozen V1 Action DSL and its negative fixtures. The machine-readable
 expected-effect and cleanup contracts live in
 `tests/E2E/contracts/`. Human-readable versions are in
 `tests/E2E/versions.env`; every OCI image used by the fixtures is pinned by an
@@ -70,12 +70,11 @@ fixture selections and must always be loaded through `images.lock`; mutable
 
 No row requires a generic shell primitive.
 
-## Blocking primitive-contract amendments required before the Task-10B DSL freeze
+## Primitive-contract amendments incorporated by the Task-10B DSL freeze
 
-The seven primitive families appear sufficient from the available evidence, but
-the primitive contract is **not frozen**. Two normative changes, their threat
-analysis, schema inputs and negative tests must be completed before the JSON
-schema can be frozen:
+The seven primitive families are sufficient from the available evidence. The
+V1 schema is frozen only after incorporating these two normative changes, their
+threat analysis and shared negative fixtures:
 
 1. `filesystem.assert-readable` must accept a **policy-defined check alias**.
    A check alias may select a bounded relative directory, fixed suffix and
