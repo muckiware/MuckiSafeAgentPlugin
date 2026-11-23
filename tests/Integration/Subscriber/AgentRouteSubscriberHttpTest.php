@@ -25,22 +25,29 @@ foreach (glob(dirname(__DIR__, 3) . '/src/Subscriber/*.php') ?: [] as $subscribe
 }
 
 use Doctrine\DBAL\Connection;
+use MuckiSafeAgentPlugin\Controller\Agent\HostHeartbeatController;
 use MuckiSafeAgentPlugin\Core\Content\AgentNonce\AgentNonceDefinition;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
 use MuckiSafeAgentPlugin\Migration\Migration1795305600CreateSecretState;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
 use MuckiSafeAgentPlugin\Service\Auth\AgentProtocol;
+use MuckiSafeAgentPlugin\Service\Auth\AuthenticatedRequest;
 use MuckiSafeAgentPlugin\Service\Auth\RequestSignature;
 use MuckiSafeAgentPlugin\Service\Auth\ResponseSignature;
 use MuckiSafeAgentPlugin\Service\Auth\ResponseVerdict;
 use MuckiSafeAgentPlugin\Service\Auth\SignatureEnvelope;
 use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
+use MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber;
+use MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelLifecycleManager;
 use Shopware\Core\Framework\Test\TestCaseBase\KernelTestBehaviour;
 use Shopware\Core\Framework\Test\TestCaseHelper\TestBrowser;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\ResponseEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 /**
  * Task 9 RED: kernel wiring of both subscribers. Unknown keys get the single
@@ -250,6 +257,132 @@ final class AgentRouteSubscriberHttpTest extends TestCase
         $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
         self::assertIsString($nonce);
         self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify($this->secretBytes, $nonce, self::HEARTBEAT_PATH, $response));
+
+        // A semantically identical heartbeat with a fresh nonce remains a
+        // successful idempotent update rather than being confused with a
+        // zero-row update or replay.
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, $body);
+        $retryResponse = $browser->getResponse();
+        self::assertSame(Response::HTTP_OK, $retryResponse->getStatusCode(), (string) $retryResponse->getContent());
+        $retryNonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($retryNonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify(
+            $this->secretBytes,
+            $retryNonce,
+            self::HEARTBEAT_PATH,
+            $retryResponse
+        ));
+    }
+
+    public function testHeartbeatBodyAtExactLimitReachesControllerAndReturnsSignedPayloadError(): void
+    {
+        $browser = $this->browser();
+        $limit = AgentProtocol::bodyLimit(AgentProtocol::ROUTE_HOST_HEARTBEAT);
+        $body = '{' . str_repeat(' ', $limit - 2) . '}';
+        self::assertSame($limit, strlen($body));
+
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, $body);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame(AgentErrorCode::PayloadInvalid->value, $this->decodeJson($response)['code']);
+        $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($nonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify(
+            $this->secretBytes,
+            $nonce,
+            self::HEARTBEAT_PATH,
+            $response
+        ));
+    }
+
+    public function testHeartbeatBodyAboveLimitReturnsSignedBodyTooLargeError(): void
+    {
+        $browser = $this->browser();
+        $limit = AgentProtocol::bodyLimit(AgentProtocol::ROUTE_HOST_HEARTBEAT);
+        $body = '{' . str_repeat(' ', $limit - 1) . '}';
+        self::assertSame($limit + 1, strlen($body));
+
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, $body);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_REQUEST_ENTITY_TOO_LARGE, $response->getStatusCode());
+        self::assertSame(AgentErrorCode::BodyTooLarge->value, $this->decodeJson($response)['code']);
+        $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($nonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify(
+            $this->secretBytes,
+            $nonce,
+            self::HEARTBEAT_PATH,
+            $response
+        ));
+    }
+
+    public function testHostDisabledAfterAuthenticationIsRejectedByAtomicUpdateWithSignedError(): void
+    {
+        $this->assertPostAuthenticationStateChangeIsRejected('`enabled` = 0');
+    }
+
+    public function testHostRevokedAfterAuthenticationIsRejectedByAtomicUpdateWithSignedError(): void
+    {
+        $this->assertPostAuthenticationStateChangeIsRejected('`revoked_at` = NOW(3)');
+    }
+
+    private function assertPostAuthenticationStateChangeIsRejected(string $stateChange): void
+    {
+        $body = json_encode([
+            'agentVersion' => '9.9.9',
+            'platform' => 'linux',
+            'arch' => 'amd64',
+            'capabilities' => ['service.control'],
+            'agentTime' => gmdate('Y-m-d\\TH:i:s\\Z'),
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $nonce = 'race-nonce-' . bin2hex(random_bytes(8)) . 'paddingpad';
+        $request = Request::create(self::HEARTBEAT_PATH, 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);
+        $request->attributes->set(AgentAuthenticationSubscriber::AUTH_ATTRIBUTE, new AuthenticatedRequest(
+            $this->agent['id'],
+            $this->agent['keyId'],
+            $this->secretBytes,
+            AgentProtocol::ROUTE_HOST_HEARTBEAT,
+            self::HEARTBEAT_PATH,
+            (string) time(),
+            $nonce,
+            $body
+        ));
+        $before = $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        );
+
+        // This state change deliberately occurs after the authenticated host
+        // context exists but before the service performs its conditional UPDATE.
+        $this->connection->executeStatement(
+            'UPDATE `muwa_agent_host` SET ' . $stateChange . ' WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        );
+        $controller = self::getContainer()->get(HostHeartbeatController::class);
+        self::assertInstanceOf(HostHeartbeatController::class, $controller);
+        $response = $controller->heartbeat($request);
+        $signer = self::getContainer()->get(AgentResponseSigningSubscriber::class);
+        self::assertInstanceOf(AgentResponseSigningSubscriber::class, $signer);
+        $signer->onKernelResponse(new ResponseEvent(
+            self::getKernel(),
+            $request,
+            HttpKernelInterface::MAIN_REQUEST,
+            $response
+        ));
+
+        self::assertSame(AgentErrorCode::Revoked->value, $this->decodeJson($response)['code']);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify(
+            $this->secretBytes,
+            $nonce,
+            self::HEARTBEAT_PATH,
+            $response
+        ));
+        self::assertSame($before, $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        ));
     }
 
     public function testMalformedHeartbeatGetsSignedPayloadErrorWithoutHostMutation(): void

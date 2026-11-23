@@ -16,7 +16,8 @@ final class ProtocolSchemaValidator
 {
     private const SUPPORTED_KEYWORDS = [
         '$schema', '$id', 'title', 'type', 'additionalProperties', 'required', 'properties',
-        'maxLength', 'pattern', 'enum', 'maxItems', 'uniqueItems', 'items', 'minimum', 'maximum',
+        'minLength', 'maxLength', 'pattern', 'enum', 'minItems', 'maxItems', 'uniqueItems', 'items',
+        'minimum', 'maximum',
     ];
 
     public function firstViolation(\stdClass $schema, mixed $value): ?string
