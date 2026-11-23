@@ -26,6 +26,7 @@ final class AgentJobEntity extends Entity
     protected string $actionDefinition;
     protected string $actionHash;
     protected string $payload;
+    protected string $idempotencyClass;
     protected string $idempotencyKey;
     protected string $status;
     protected string $targetAgentId;
@@ -116,6 +117,16 @@ final class AgentJobEntity extends Entity
     public function setPayload(string $payload): void
     {
         $this->payload = $payload;
+    }
+
+    public function getIdempotencyClass(): string
+    {
+        return $this->idempotencyClass;
+    }
+
+    public function setIdempotencyClass(string $idempotencyClass): void
+    {
+        $this->idempotencyClass = $idempotencyClass;
     }
 
     public function getIdempotencyKey(): string

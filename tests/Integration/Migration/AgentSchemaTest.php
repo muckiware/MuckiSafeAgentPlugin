@@ -12,6 +12,7 @@
 namespace MuckiSafeAgentPlugin\tests\Integration\Migration;
 
 require_once dirname(__DIR__, 3) . '/src/Migration/Migration1795132800CreateAgentSchema.php';
+require_once dirname(__DIR__, 3) . '/src/Migration/Migration1795392000AddJobIdempotencyClass.php';
 require_once dirname(__DIR__, 3) . '/src/Core/Framework/DataAbstractionLayer/Field/Flag/Immutable.php';
 foreach (glob(dirname(__DIR__, 3) . '/src/Core/Content/*/*Definition.php') ?: [] as $definitionFile) {
     require_once $definitionFile;
@@ -31,6 +32,7 @@ use MuckiSafeAgentPlugin\Core\Job\JobStatus;
 use MuckiSafeAgentPlugin\Core\Run\RunStatus;
 use MuckiSafeAgentPlugin\Core\Framework\DataAbstractionLayer\Field\Flag\Immutable as CompatibilityImmutable;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795392000AddJobIdempotencyClass;
 use PHPUnit\Framework\TestCase;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -85,7 +87,7 @@ final class AgentSchemaTest extends TestCase
             'muwa_agent_action' => ['id', 'technical_name', 'label', 'enabled', 'definition', 'definition_hash', 'parameter_schema', 'required_capabilities', 'default_timeout_seconds', 'max_timeout_seconds', 'retry_policy', 'idempotency_class', 'created_at', 'updated_at'],
             'muwa_agent_repository_hook' => ['id', 'facility_repository_id', 'phase', 'agent_host_id', 'agent_action_id', 'parameters', 'timeout_seconds', 'fail_on_error', 'enabled', 'created_at', 'updated_at'],
             'muwa_agent_backup_run' => ['id', 'facility_repository_id', 'source', 'idempotency_key', 'status', 'started_at', 'finished_at', 'primary_error_code', 'primary_error_summary', 'active_guard', 'created_at', 'updated_at'],
-            'muwa_agent_job' => ['id', 'backup_run_id', 'agent_action_id', 'facility_repository_id', 'phase', 'action_definition', 'action_hash', 'payload', 'idempotency_key', 'status', 'target_agent_id', 'claim_token_hash', 'lease_version', 'attempt', 'max_attempts', 'available_at', 'phase_deadline', 'execution_deadline', 'stop_deadline', 'claimed_at', 'lease_expires_at', 'heartbeat_at', 'finished_at', 'completion_fingerprint', 'completion_agent_id', 'previous_claim_token_hash', 'accepted_lease_version', 'result_code', 'result_summary', 'stdout_tail', 'stderr_tail', 'active_agent_id', 'created_at', 'updated_at'],
+            'muwa_agent_job' => ['id', 'backup_run_id', 'agent_action_id', 'facility_repository_id', 'phase', 'action_definition', 'action_hash', 'payload', 'idempotency_class', 'idempotency_key', 'status', 'target_agent_id', 'claim_token_hash', 'lease_version', 'attempt', 'max_attempts', 'available_at', 'phase_deadline', 'execution_deadline', 'stop_deadline', 'claimed_at', 'lease_expires_at', 'heartbeat_at', 'finished_at', 'completion_fingerprint', 'completion_agent_id', 'previous_claim_token_hash', 'accepted_lease_version', 'result_code', 'result_summary', 'stdout_tail', 'stderr_tail', 'active_agent_id', 'created_at', 'updated_at'],
             'muwa_agent_nonce' => ['id', 'agent_id', 'nonce', 'expires_at', 'created_at', 'updated_at'],
         ];
 
@@ -132,7 +134,8 @@ final class AgentSchemaTest extends TestCase
             'muwa_agent_job' => [
                 'id' => 'binary(16)', 'backup_run_id' => 'binary(16)', 'agent_action_id' => 'binary(16)',
                 'facility_repository_id' => 'binary(16)', 'phase' => 'varchar(16)', 'action_definition' => 'longtext',
-                'action_hash' => 'binary(32)', 'payload' => 'longtext', 'idempotency_key' => 'varchar(255)',
+                'action_hash' => 'binary(32)', 'payload' => 'longtext', 'idempotency_class' => 'varchar(32)',
+                'idempotency_key' => 'varchar(255)',
                 'status' => 'varchar(32)', 'target_agent_id' => 'binary(16)', 'lease_version' => 'int unsigned',
                 'attempt' => 'int unsigned', 'max_attempts' => 'int unsigned', 'available_at' => 'datetime(3)',
                 'phase_deadline' => 'datetime(3)', 'execution_deadline' => 'datetime(3)', 'stop_deadline' => 'datetime(3)',
@@ -156,6 +159,24 @@ final class AgentSchemaTest extends TestCase
                 self::assertSame(['type' => $type, 'null' => 'NO'], $actual[$name], $table . '.' . $name);
             }
         }
+    }
+
+    public function testUpgradeMigrationBackfillsAndFreezesLegacyJobs(): void
+    {
+        $jobId = $this->prepareLegacyJob(false);
+
+        (new Migration1795392000AddJobIdempotencyClass())->update($this->connection);
+
+        $this->assertUpgradedIdempotencySnapshot($jobId);
+    }
+
+    public function testUpgradeMigrationResumesAfterNullableColumnWasAlreadyAdded(): void
+    {
+        $jobId = $this->prepareLegacyJob(true);
+
+        (new Migration1795392000AddJobIdempotencyClass())->update($this->connection);
+
+        $this->assertUpgradedIdempotencySnapshot($jobId);
     }
 
     public function testUniqueIndexesAndInternalForeignKeysAreExact(): void
@@ -279,6 +300,7 @@ SQL);
             'muwa_agent_job' => [
                 'chk_agent_job_status' => array_column(JobStatus::cases(), 'value'),
                 'chk_agent_job_phase' => array_column(JobPhase::cases(), 'value'),
+                'chk_agent_job_idempotency_class' => array_column(IdempotencyClass::cases(), 'value'),
             ],
         ];
 
@@ -512,7 +534,7 @@ SQL);
         $hook = new \MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook\AgentRepositoryHookDefinition();
 
         foreach (['backup_run_id', 'agent_action_id', 'facility_repository_id', 'phase', 'action_definition',
-            'action_hash', 'payload', 'idempotency_key', 'status', 'target_agent_id', 'lease_version', 'attempt',
+            'action_hash', 'payload', 'idempotency_class', 'idempotency_key', 'status', 'target_agent_id', 'lease_version', 'attempt',
             'max_attempts', 'available_at', 'phase_deadline', 'execution_deadline', 'stop_deadline', 'claimed_at', 'lease_expires_at',
             'heartbeat_at', 'finished_at', 'completion_fingerprint', 'completion_agent_id',
             'accepted_lease_version', 'result_code', 'result_summary', 'stdout_tail', 'stderr_tail'] as $fieldName) {
@@ -521,7 +543,7 @@ SQL);
             self::assertTrue($flag->isAllowed(Context::SYSTEM_SCOPE));
         }
         foreach (['idempotency_key', 'phase_deadline', 'execution_deadline', 'stop_deadline', 'action_definition',
-            'action_hash', 'payload', 'completion_fingerprint', 'completion_agent_id', 'accepted_lease_version'] as $fieldName) {
+            'action_hash', 'payload', 'idempotency_class', 'completion_fingerprint', 'completion_agent_id', 'accepted_lease_version'] as $fieldName) {
             self::assertTrue($this->definitionField($job, $fieldName)->is($this->immutableFlagClass()), $fieldName . ' must be write-once');
         }
         foreach (['facility_repository_id', 'source', 'idempotency_key', 'status', 'started_at', 'finished_at', 'primary_error_code', 'primary_error_summary'] as $fieldName) {
@@ -547,6 +569,7 @@ SQL);
             'actionDefinition' => '{}',
             'actionHash' => hash('sha256', '{}', true),
             'payload' => '{}',
+            'idempotencyClass' => IdempotencyClass::Safe->value,
             'idempotencyKey' => Uuid::randomHex(),
             'status' => JobStatus::Queued->value,
             'targetAgentId' => Uuid::fromBytesToHex($agentId),
@@ -600,6 +623,7 @@ SQL);
             'actionDefinition' => '{}',
             'actionHash' => hash('sha256', '{}', true),
             'payload' => '{}',
+            'idempotencyClass' => IdempotencyClass::Safe->value,
             'idempotencyKey' => Uuid::randomHex(),
             'status' => 'queued',
             'targetAgentId' => Uuid::fromBytesToHex($agentId),
@@ -841,6 +865,62 @@ SQL);
         return $results;
     }
 
+    private function prepareLegacyJob(bool $leaveNullableColumn): string
+    {
+        [$runId, $actionId, $agentId] = $this->createJobParents();
+        $jobId = Uuid::randomBytes();
+        $this->insertJob($this->connection, $runId, $actionId, $agentId, JobStatus::Queued->value, $jobId);
+
+        $this->connection->executeStatement('DROP TRIGGER IF EXISTS `muwa_agent_job_immutable_before_update`');
+        $this->connection->executeStatement('DROP TRIGGER IF EXISTS `muwa_agent_job_idempotency_immutable_before_update`');
+        $this->connection->executeStatement(
+            'ALTER TABLE `muwa_agent_job` DROP CHECK `chk_agent_job_idempotency_class`, '
+            . 'DROP COLUMN `idempotency_class`'
+        );
+        if ($leaveNullableColumn) {
+            $this->connection->executeStatement(
+                'ALTER TABLE `muwa_agent_job` ADD COLUMN `idempotency_class` VARCHAR(32) NULL AFTER `payload`'
+            );
+        }
+
+        return $jobId;
+    }
+
+    private function assertUpgradedIdempotencySnapshot(string $jobId): void
+    {
+        $column = $this->connection->fetchAssociative(
+            'SHOW COLUMNS FROM `muwa_agent_job` WHERE `Field` = \'idempotency_class\''
+        );
+        self::assertIsArray($column);
+        self::assertSame('NO', $column['Null']);
+        self::assertSame(
+            IdempotencyClass::Safe->value,
+            $this->connection->fetchOne('SELECT `idempotency_class` FROM `muwa_agent_job` WHERE `id` = :id', ['id' => $jobId])
+        );
+        self::assertSame(1, (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS '
+            . 'WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = \'muwa_agent_job\' '
+            . 'AND CONSTRAINT_NAME = \'chk_agent_job_idempotency_class\' AND CONSTRAINT_TYPE = \'CHECK\''
+        ));
+        self::assertSame(1, (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() '
+            . 'AND TRIGGER_NAME = \'muwa_agent_job_idempotency_immutable_before_update\''
+        ));
+
+        try {
+            $this->connection->update(
+                'muwa_agent_job',
+                ['idempotency_class' => IdempotencyClass::NonRetryable->value],
+                ['id' => $jobId]
+            );
+            self::fail('Upgraded idempotency snapshot must be immutable.');
+        } catch (DriverException $exception) {
+            self::assertStringContainsString('immutable', strtolower($exception->getMessage()));
+        }
+
+        (new Migration1795392000AddJobIdempotencyClass())->update($this->connection);
+    }
+
     /** @return array{string, string, string} */
     private function createJobParents(): array
     {
@@ -920,6 +1000,7 @@ SQL);
             'action_definition' => '{}',
             'action_hash' => hash('sha256', '{}', true),
             'payload' => '{}',
+            'idempotency_class' => IdempotencyClass::Safe->value,
             'idempotency_key' => Uuid::randomHex(),
             'status' => $status,
             'target_agent_id' => $agentId,

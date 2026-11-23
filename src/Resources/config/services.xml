@@ -56,6 +56,22 @@
         </service>
         <service id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
         <service id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        <service id="MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder"/>
+        <service id="MuckiSafeAgentPlugin\Service\Action\ActionValidator"/>
+        <service id="MuckiSafeAgentPlugin\Service\Action\ParameterValidator"/>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobClaimRequestDecoder">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobCreator" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Action\ActionValidator"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Action\ParameterValidator"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobClaimer" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
@@ -66,6 +82,11 @@
         <service id="MuckiSafeAgentPlugin\Controller\Agent\HostHeartbeatController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeat"/>
+            <tag name="controller.service_arguments"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Agent\JobClaimController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimRequestDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimer"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">

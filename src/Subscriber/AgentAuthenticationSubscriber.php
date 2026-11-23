@@ -71,6 +71,10 @@ final class AgentAuthenticationSubscriber implements EventSubscriberInterface
         }
 
         $request->attributes->set(self::AUTH_ATTRIBUTE, $authenticated);
+        // The authenticated bytes are authoritative and decoded by the endpoint's
+        // duplicate-aware decoder. Prevent Shopware's later generic JSON request
+        // transformer from pre-empting that decoder for malformed JSON.
+        $request->headers->set('Content-Type', 'application/octet-stream');
     }
 
     /** Exact route prefix of the v1 agent routes, no trailing suffix. */

@@ -62,6 +62,7 @@ final class AgentJobDefinition extends EntityDefinition
             (new LongTextField('action_definition', 'actionDefinition'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new BlobField('action_hash', 'actionHash'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new LongTextField('payload', 'payload'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
+            (new StringField('idempotency_class', 'idempotencyClass'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('idempotency_key', 'idempotencyKey'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('status', 'status'))->addFlags(new Required(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new FkField('target_agent_id', 'targetAgentId', AgentHostDefinition::class))->addFlags(new Required(), new WriteProtected(Context::SYSTEM_SCOPE)),

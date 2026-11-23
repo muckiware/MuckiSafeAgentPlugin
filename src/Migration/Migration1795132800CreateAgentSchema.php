@@ -129,6 +129,7 @@ CREATE TABLE IF NOT EXISTS `muwa_agent_job` (
     `action_definition` LONGTEXT NOT NULL,
     `action_hash` BINARY(32) NOT NULL,
     `payload` LONGTEXT NOT NULL,
+    `idempotency_class` VARCHAR(32) NOT NULL,
     `idempotency_key` VARCHAR(255) NOT NULL,
     `status` VARCHAR(32) NOT NULL,
     `target_agent_id` BINARY(16) NOT NULL,
@@ -168,6 +169,7 @@ CREATE TABLE IF NOT EXISTS `muwa_agent_job` (
     CONSTRAINT `fk_agent_job_target` FOREIGN KEY (`target_agent_id`) REFERENCES `muwa_agent_host` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT `fk_agent_job_completion_agent` FOREIGN KEY (`completion_agent_id`) REFERENCES `muwa_agent_host` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
     CONSTRAINT `chk_agent_job_phase` CHECK (BINARY `phase` IN ('pre', 'post', 'finally')),
+    CONSTRAINT `chk_agent_job_idempotency_class` CHECK (BINARY `idempotency_class` IN ('safe', 'non_retryable')),
     CONSTRAINT `chk_agent_job_status` CHECK (BINARY `status` IN ('queued', 'claimed', 'running', 'cancel_requested', 'succeeded', 'failed', 'timed_out', 'expired', 'unknown'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 SQL);
@@ -226,6 +228,7 @@ BEGIN
        OR NOT (OLD.`action_definition` <=> NEW.`action_definition`)
        OR NOT (OLD.`action_hash` <=> NEW.`action_hash`)
        OR NOT (OLD.`payload` <=> NEW.`payload`)
+       OR NOT (OLD.`idempotency_class` <=> NEW.`idempotency_class`)
        OR NOT (OLD.`idempotency_key` <=> NEW.`idempotency_key`)
        OR NOT (OLD.`phase_deadline` <=> NEW.`phase_deadline`)
        OR NOT (OLD.`execution_deadline` <=> NEW.`execution_deadline`)
