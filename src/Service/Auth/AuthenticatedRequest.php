@@ -28,7 +28,8 @@ final readonly class AuthenticatedRequest
         public string $routeName,
         public string $path,
         public string $requestTimestamp,
-        public string $nonce
+        public string $nonce,
+        #[\SensitiveParameter] public string $rawBody = ''
     ) {
     }
 }

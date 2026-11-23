@@ -54,6 +54,20 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ResponseSignature"/>
             <tag name="kernel.event_subscriber"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
+        <service id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeat" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Agent\HostHeartbeatController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeat"/>
+            <tag name="controller.service_arguments"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator"/>

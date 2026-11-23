@@ -79,6 +79,10 @@ final class AgentAuthenticator implements AgentAuthenticatorInterface
         if ($request->headers->has('Content-Encoding')) {
             throw new AgentAuthException(AgentErrorCode::RequestInvalid, 'Content-Encoding is not allowed on agent routes.', $context());
         }
+        $contentType = $request->headers->get('Content-Type');
+        if (!is_string($contentType) || strtolower(trim($contentType)) !== 'application/json') {
+            throw new AgentAuthException(AgentErrorCode::UnsupportedMediaType, 'Content-Type must be application/json.', $context());
+        }
         $contentLengths = $request->headers->all('content-length');
         if (count($contentLengths) > 1) {
             throw new AgentAuthException(AgentErrorCode::RequestInvalid, 'Ambiguous Content-Length.', $context());
@@ -136,7 +140,16 @@ final class AgentAuthenticator implements AgentAuthenticatorInterface
             throw new AgentAuthException(AgentErrorCode::BodyTooLarge, 'Request body exceeds the route limit.', $context());
         }
 
-        return new AuthenticatedRequest($hostId, $keyId, $secret, $routeName, $path, $headers['timestamp'], $headers['nonce']);
+        return new AuthenticatedRequest(
+            $hostId,
+            $keyId,
+            $secret,
+            $routeName,
+            $path,
+            $headers['timestamp'],
+            $headers['nonce'],
+            $body['raw']
+        );
     }
 
     /**
@@ -210,12 +223,13 @@ final class AgentAuthenticator implements AgentAuthenticatorInterface
      * the transport hard cap; bodies beyond it cannot authenticate anyway
      * and the upstream webserver already rejects them.
      *
-     * @return array{length: int, sha256: string}
+     * @return array{length: int, sha256: string, raw: string}
      */
     private function hashBody(Request $request): array
     {
         $hash = hash_init('sha256');
         $length = 0;
+        $raw = '';
         $stream = $request->getContent(true);
         if (is_resource($stream)) {
             while ($length < AgentProtocol::TRANSPORT_HARD_CAP_BYTES) {
@@ -225,10 +239,11 @@ final class AgentAuthenticator implements AgentAuthenticatorInterface
                 }
                 hash_update($hash, $chunk);
                 $length += strlen($chunk);
+                $raw .= $chunk;
             }
             fclose($stream);
         }
 
-        return ['length' => $length, 'sha256' => hash_final($hash)];
+        return ['length' => $length, 'sha256' => hash_final($hash), 'raw' => $raw];
     }
 }

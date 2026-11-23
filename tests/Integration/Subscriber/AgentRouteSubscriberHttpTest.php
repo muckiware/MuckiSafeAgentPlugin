@@ -102,7 +102,7 @@ final class AgentRouteSubscriberHttpTest extends TestCase
     }
 
     /**
-     * @param array<string, string> $overrides keyId, timestamp, nonce, signature
+     * @param array<string, string> $overrides keyId, timestamp, nonce, signature, contentType
      */
     private function signedAgentRequest(
         TestBrowser $browser,
@@ -117,7 +117,7 @@ final class AgentRouteSubscriberHttpTest extends TestCase
         $signature = $overrides['signature'] ?? hash_hmac('sha256', (new RequestSignature())->baseString('POST', $envelope), $this->secretBytes);
 
         $browser->request('POST', $path, [], [], [
-            'CONTENT_TYPE' => 'application/json',
+            'CONTENT_TYPE' => $overrides['contentType'] ?? 'application/json',
             'HTTP_ACCEPT' => 'application/json',
             'HTTP_X_MUCKI_AGENT_KEY' => $keyId,
             'HTTP_X_MUCKI_AGENT_TIMESTAMP' => $timestamp,
@@ -211,26 +211,92 @@ final class AgentRouteSubscriberHttpTest extends TestCase
         self::assertSame(1, $this->nonceCount());
     }
 
-    public function testKernelExceptionAfterAuthenticationReceivesSignedStableErrorDto(): void
+    public function testValidHeartbeatUpdatesOnlyAuthenticatedHostAndReturnsSignedResponse(): void
     {
+        $other = self::getContainer()->get(AgentProvisioner::class)->provision('other-host');
+        $otherBefore = $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $other['id']]
+        );
         $browser = $this->browser();
-        // valid signature, but the controller routes do not exist before task 10C:
-        // the router throws, the exception subscriber must answer with a
-        // stable signed JSON DTO instead of an HTML stack trace page.
-        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}');
+        $body = json_encode([
+            'agentVersion' => '1.2.3',
+            'platform' => 'linux',
+            'arch' => 'amd64',
+            'capabilities' => ['docker.exec', 'service.control'],
+            'agentTime' => gmdate('Y-m-d\\TH:i:s\\Z'),
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, $body);
 
         $response = $browser->getResponse();
-        self::assertSame(Response::HTTP_INTERNAL_SERVER_ERROR, $response->getStatusCode());
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode(), (string) $response->getContent());
         $payload = $this->decodeJson($response);
-        self::assertSame(AgentErrorCode::InternalError->value, $payload['code']);
-        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
-        self::assertSame(1, $this->nonceCount());
+        self::assertSame(30, $payload['pollAfterSeconds']);
+        self::assertMatchesRegularExpression('/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/', (string) $payload['serverTime']);
 
-        $requestNonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
-        self::assertNotNull($requestNonce);
-        self::assertSame($requestNonce, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
-        $verdict = (new ResponseSignature())->classify($this->secretBytes, (string) $requestNonce, self::HEARTBEAT_PATH, $response);
-        self::assertSame(ResponseVerdict::Accept, $verdict);
+        $row = $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        );
+        self::assertIsArray($row);
+        self::assertSame('1.2.3', $row['version']);
+        self::assertSame(['docker.exec', 'service.control'], json_decode((string) $row['capabilities'], true, 8, JSON_THROW_ON_ERROR));
+        self::assertNotNull($row['last_seen_at']);
+        self::assertSame($otherBefore, $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $other['id']]
+        ));
+
+        $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($nonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify($this->secretBytes, $nonce, self::HEARTBEAT_PATH, $response));
+    }
+
+    public function testMalformedHeartbeatGetsSignedPayloadErrorWithoutHostMutation(): void
+    {
+        $before = $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        );
+        $browser = $this->browser();
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{"agentVersion":"broken"}');
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame(AgentErrorCode::PayloadInvalid->value, $this->decodeJson($response)['code']);
+        $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($nonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify($this->secretBytes, $nonce, self::HEARTBEAT_PATH, $response));
+        self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        self::assertSame($before, $this->connection->fetchAssociative(
+            'SELECT `version`, `capabilities`, `last_seen_at` FROM `muwa_agent_host` WHERE `id` = UNHEX(:id)',
+            ['id' => $this->agent['id']]
+        ));
+    }
+
+    public function testUnsupportedPlatformGetsSignedProtocolError(): void
+    {
+        $browser = $this->browser();
+        $body = '{"agentVersion":"1.0.0","platform":"darwin","arch":"amd64","capabilities":[],"agentTime":"2026-11-23T10:15:30Z"}';
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, $body);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_BAD_REQUEST, $response->getStatusCode());
+        self::assertSame(AgentErrorCode::ProtocolUnsupported->value, $this->decodeJson($response)['code']);
+        $nonce = $browser->getRequest()->headers->get('X-Mucki-Agent-Nonce');
+        self::assertIsString($nonce);
+        self::assertSame(ResponseVerdict::Accept, (new ResponseSignature())->classify($this->secretBytes, $nonce, self::HEARTBEAT_PATH, $response));
+    }
+
+    public function testUnsupportedMediaTypeGetsSigned415(): void
+    {
+        $browser = $this->browser();
+        $this->signedAgentRequest($browser, self::HEARTBEAT_PATH, '{}', ['contentType' => 'text/plain']);
+
+        $response = $browser->getResponse();
+        self::assertSame(Response::HTTP_UNSUPPORTED_MEDIA_TYPE, $response->getStatusCode());
+        self::assertSame(AgentErrorCode::UnsupportedMediaType->value, $this->decodeJson($response)['code']);
+        self::assertNotNull($response->headers->get('X-Mucki-Agent-Signature'));
     }
 
     public function testBothSubscribersAreRegisteredWithNormativePriorities(): void

@@ -184,6 +184,7 @@ final class AgentAuthenticatorTest extends TestCase
         self::assertSame(AgentProtocol::ROUTE_HOST_HEARTBEAT, $authenticated->routeName);
         self::assertSame((string) self::FIXED_NOW, $authenticated->requestTimestamp);
         self::assertSame($request->headers->get('X-Mucki-Agent-Nonce'), $authenticated->nonce);
+        self::assertSame($body, $authenticated->rawBody);
         self::assertSame(1, $this->nonceCount());
     }
 
