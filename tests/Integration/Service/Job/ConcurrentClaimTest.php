@@ -274,7 +274,7 @@ final class ConcurrentClaimTest extends TestCase
             $this->hostId,
             'short-lease',
             $now->modify('-1 second'),
-            $now->modify('+25 seconds')
+            $now->modify('+44 seconds')
         );
         self::assertNotNull($this->claimer()->claim($this->hostId)->job);
         $shortRow = $this->connection->fetchAssociative(
