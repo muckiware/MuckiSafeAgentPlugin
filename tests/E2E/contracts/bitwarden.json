@@ -1,0 +1,293 @@
+{
+  "contractVersion": 1,
+  "service": "bitwarden",
+  "reference": {
+    "version": "2026.10.1",
+    "evidence": [
+      "MuckiSafe/docs/bitwarden-backup-prep/bitwarden-prep.sh",
+      "MuckiSafe/docs/bitwarden-backup-prep/muckisafe-bitwarden-prep",
+      "MuckiSafe/docs/bitwarden-backup-prep/muckisafe-bitwarden-prep.path",
+      "MuckiSafe/docs/bitwarden-backup-prep/muckisafe-bitwarden-prep.service"
+    ],
+    "legacyInvocation": {
+      "command": "/scripts/bitwarden-prep.sh",
+      "arguments": [],
+      "runAs": "www-data",
+      "containerDefaults": {
+        "PREP_DIR": "/scripts/.prep",
+        "PREP_TIMEOUT": 600,
+        "BW_DATA": "/opt/bitwarden/bwdata"
+      },
+      "hostDefaults": {
+        "MSSQL_CONTAINER": "bitwarden-mssql",
+        "BW_DATA_HOST": "/opt/bitwarden",
+        "hostCommand": "/usr/local/bin/muckisafe-bitwarden-prep"
+      }
+    }
+  },
+  "idempotency": "additive",
+  "serializationKey": "service:bitwarden",
+  "aliases": {
+    "containers": {
+      "bitwarden-mssql": {
+        "name": "bitwarden-mssql"
+      }
+    },
+    "commands": {
+      "bitwarden-full-backup": {
+        "containerAlias": "bitwarden-mssql",
+        "argv": [
+          "/backup-db.sh"
+        ],
+        "arguments": []
+      }
+    },
+    "paths": {
+      "bitwarden-data": {
+        "root": "/opt/bitwarden",
+        "recursive": true
+      }
+    },
+    "principals": {
+      "muckisafe-backup": {
+        "uid": 33,
+        "gid": 33
+      }
+    },
+    "checks": {
+      "bitwarden-current-full-backup": {
+        "pathAlias": "bitwarden-data",
+        "directory": "bwdata/mssql/backups",
+        "suffix": ".BAK",
+        "createdByCurrentRun": true,
+        "regularFile": true,
+        "minimumSize": 1,
+        "readableBy": "muckisafe-backup"
+      },
+      "bitwarden-required-files": {
+        "pathAlias": "bitwarden-data",
+        "readableBy": "muckisafe-backup",
+        "relativePaths": [
+          "bwdata/env/global.override.env",
+          "bwdata/identity/identity.pfx"
+        ],
+        "requiredBoundedMatch": {
+          "directory": "bwdata/core/aspnet-dataprotection",
+          "suffix": ".xml",
+          "minimumCount": 1
+        }
+      }
+    },
+    "endpoints": {
+      "bitwarden-config": {
+        "url": "https://bitwarden.freyda.de/api/config",
+        "expectedStatuses": [
+          200
+        ],
+        "redirects": false,
+        "timeoutSeconds": 30,
+        "intervalSeconds": 2,
+        "responseConstraints": {
+          "jsonField": "version",
+          "equals": "2026.10.1",
+          "maximumBytes": 65536
+        },
+        "allowedIpRanges": [
+          "93.201.10.105/32"
+        ]
+      }
+    }
+  },
+  "startState": [
+    "bitwarden-mssql exists and is running",
+    "bitwarden-data/bwdata exists",
+    "muckisafe-backup is the configured backup principal",
+    "no other bitwarden action owns the serialization key"
+  ],
+  "pre": [
+    {
+      "primitive": "docker.container.exec",
+      "containerAlias": "bitwarden-mssql",
+      "commandAlias": "bitwarden-full-backup",
+      "arguments": {}
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "bitwarden-data",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "bitwarden-current-full-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "bitwarden-required-files"
+    }
+  ],
+  "core": {
+    "operation": "muckisafe.backup",
+    "sources": [
+      "bitwarden-data/bwdata"
+    ],
+    "requiredExitCode": 0
+  },
+  "success": [
+    "the fixed backup command exits 0",
+    "a non-empty .BAK created by this run is readable by UID 33",
+    "global.override.env, identity.pfx and at least one data-protection XML key are readable by UID 33",
+    "the complete bwdata tree, including core/attachments, is backed up",
+    "the core backup exits 0",
+    "the fixed Bitwarden config endpoint returns HTTP 200 and version 2026.10.1"
+  ],
+  "expectedEffects": {
+    "filesCreated": [
+      "bitwarden-data/bwdata/mssql/backups/<current-run>.BAK"
+    ],
+    "acl": [
+      "user:33:rX recursively on bitwarden-data"
+    ],
+    "serviceState": [
+      "bitwarden-mssql remains running"
+    ],
+    "ownershipChanges": []
+  },
+  "failureInjections": [
+    {
+      "phase": "preflight",
+      "injection": "unknown alias, traversal/symlink or MSSQL proven unavailable before command start",
+      "expectedStatus": "failed",
+      "resultCode": "policy_or_preflight_rejected",
+      "retry": "safe",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "pre",
+      "injection": "/backup-db.sh returns non-zero after start",
+      "expectedStatus": "failed",
+      "resultCode": "command_failed",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "unknown command-created BAK candidate"
+      ]
+    },
+    {
+      "phase": "pre",
+      "injection": "no current BAK, zero-byte BAK, stale BAK only or unreadable required file",
+      "expectedStatus": "failed",
+      "resultCode": "verification_failed",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "command-created BAK candidate",
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "core",
+      "injection": "core backup non-zero",
+      "expectedStatus": "failed",
+      "resultCode": "backup_failed",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "current-run BAK",
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "crash",
+      "injection": "outcome lost after backup command starts",
+      "completionOutcome": "ambiguous",
+      "expectedStatus": "unknown",
+      "ambiguityReason": {
+        "code": "bitwarden_backup_outcome_lost",
+        "message": "The fixed backup command started but its completion and artifact set could not be proven."
+      },
+      "retry": "non_retryable",
+      "failureTails": false,
+      "allowedResidualEffects": [
+        "unknown backup command effects"
+      ]
+    }
+  ],
+  "cleanup": {
+    "testOnly": {
+      "selector": {
+        "pathAlias": "bitwarden-data",
+        "relativeDirectory": "bwdata/mssql/backups",
+        "artifactRunId": "required",
+        "deviceInodeMatch": true,
+        "linkCount": 1,
+        "noSymlinks": true
+      },
+      "onIdentityMismatch": "delete_nothing",
+      "aclRestore": {
+        "trustedPreTestSnapshot": true,
+        "rootIdentityMatch": true,
+        "onMismatch": "mutate_nothing"
+      },
+      "snapshots": "test-owned only"
+    },
+    "production": {
+      "deleteArtifacts": false,
+      "retainReadAcl": true,
+      "unmanifestedDeletion": false
+    }
+  },
+  "task10BRequirements": [
+    "filesystem.assert-readable must accept a policy-defined checkAlias for same-run, non-empty bounded file selection",
+    "the action must never supply a glob, absolute path, UID, container name or executable"
+  ],
+  "post": [
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "bitwarden-config",
+      "expectedStatuses": [
+        200
+      ]
+    }
+  ],
+  "retryPolicy": {
+    "beforeFirstHostEffect": "safe",
+    "afterFirstHostEffect": "non_retryable",
+    "crashAfterFirstHostEffect": "unknown"
+  },
+  "requirementMatrix": [
+    {
+      "id": "bw-start",
+      "requirement": "start state and aliases",
+      "primitive": "policy validation",
+      "e2e": "reject missing/stopped container, missing root and unknown aliases"
+    },
+    {
+      "id": "bw-parameters",
+      "requirement": "fixed backup argv and principal",
+      "primitive": "docker.container.exec + local policy",
+      "e2e": "record argv; reject any action-supplied executable, container, path or UID"
+    },
+    {
+      "id": "bw-effects",
+      "requirement": "current non-empty BAK and readable restore set",
+      "primitive": "filesystem.acl.read + filesystem.assert-readable",
+      "e2e": "assert run-correlated BAK size/readability and required paths"
+    },
+    {
+      "id": "bw-health",
+      "requirement": "service remains available",
+      "primitive": "service.wait-http",
+      "e2e": "HTTP 200 with bounded JSON version field"
+    },
+    {
+      "id": "bw-failures",
+      "requirement": "fail closed after injected errors",
+      "primitive": "ordered action executor",
+      "e2e": "inject every failure case and assert result/status/residual effects"
+    },
+    {
+      "id": "bw-cleanup",
+      "requirement": "cleanup cannot widen deletion",
+      "primitive": "manifest-scoped test cleanup",
+      "e2e": "identity mismatch deletes nothing"
+    }
+  ],
+  "verificationStatus": "evidence_only_untested_live_and_e2e_waived"
+}

@@ -1,0 +1,416 @@
+{
+  "contractVersion": 1,
+  "service": "immich",
+  "reference": {
+    "version": "3.3.5",
+    "evidence": [
+      "MuckiSafe/docs/immich-backup-prep/immich-prep.sh",
+      "MuckiSafe/docs/immich-backup-prep/muckisafe-immich-prep",
+      "MuckiSafe/docs/immich-backup-prep/muckisafe-immich-prep.path",
+      "MuckiSafe/docs/immich-backup-prep/muckisafe-immich-prep.service"
+    ],
+    "legacyInvocation": {
+      "command": "/scripts/immich-prep.sh",
+      "arguments": [],
+      "runAs": "www-data",
+      "containerDefaults": {
+        "PREP_DIR": "/scripts/.immich",
+        "PREP_TIMEOUT": 600
+      },
+      "hostDefaults": {
+        "DB_CONTAINER": "immich_postgres",
+        "DUMP_KEEP": 10,
+        "hostCommand": "/usr/local/bin/muckisafe-immich-prep"
+      }
+    }
+  },
+  "idempotency": "additive",
+  "serializationKey": "service:immich",
+  "aliases": {
+    "containers": {
+      "immich-postgres": {
+        "name": "immich_postgres"
+      }
+    },
+    "sourceCommands": {
+      "immich-pg-dump": {
+        "containerAlias": "immich-postgres",
+        "policyBindings": {
+          "database": "IMMICH_DB_NAME",
+          "username": "IMMICH_DB_USERNAME"
+        },
+        "argvTemplate": [
+          "pg_dump",
+          "--clean",
+          "--if-exists",
+          "--dbname=${policy.database}",
+          "--username=${policy.username}"
+        ],
+        "argumentRules": {
+          "database": {
+            "source": "local_policy",
+            "type": "postgres_identifier",
+            "actionOverride": false
+          },
+          "username": {
+            "source": "local_policy",
+            "type": "postgres_identifier",
+            "actionOverride": false
+          }
+        },
+        "secretEnvironment": [],
+        "authentication": "in-container PostgreSQL authentication configured by the fixed container; the action supplies no password or environment"
+      }
+    },
+    "paths": {
+      "immich-upload": {
+        "rootFromPolicy": "UPLOAD_LOCATION",
+        "recursive": true
+      },
+      "immich-thumbs": {
+        "rootFromPolicy": "THUMB_LOCATION",
+        "recursive": true
+      },
+      "immich-encoded-video": {
+        "rootFromPolicy": "ENCODED_VIDEO_LOCATION",
+        "recursive": true
+      },
+      "immich-profile": {
+        "rootFromPolicy": "PROFILE_LOCATION",
+        "recursive": true
+      }
+    },
+    "destinations": {
+      "immich-manual-backups": {
+        "pathAlias": "immich-upload",
+        "relativeDirectory": "backups",
+        "prefix": "immich-db-dump-manual-",
+        "suffix": ".sql.gz",
+        "owner": 33,
+        "group": 33,
+        "mode": "0640",
+        "maximumBytes": 21474836480
+      }
+    },
+    "principals": {
+      "muckisafe-backup": {
+        "uid": 33,
+        "gid": 33
+      }
+    },
+    "checks": {
+      "immich-upload-required-readable": {
+        "pathAlias": "immich-upload",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "immich-thumbs-required-readable": {
+        "pathAlias": "immich-thumbs",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "immich-encoded-video-required-readable": {
+        "pathAlias": "immich-encoded-video",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "immich-profile-required-readable": {
+        "pathAlias": "immich-profile",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "immich-current-run-output": {
+        "destinationAlias": "immich-manual-backups",
+        "createdByCurrentRun": true,
+        "regularFile": true,
+        "minimumSize": 1,
+        "readableBy": "muckisafe-backup"
+      }
+    },
+    "endpoints": {
+      "immich-version": {
+        "url": "http://127.0.0.1:2283/api/server/version",
+        "expectedStatuses": [
+          200
+        ],
+        "allowedIpRanges": [
+          "127.0.0.0/8"
+        ],
+        "redirects": false,
+        "timeoutSeconds": 60,
+        "intervalSeconds": 2,
+        "responseConstraints": {
+          "jsonFields": {
+            "major": 3,
+            "minor": 3,
+            "patch": 5
+          },
+          "maximumBytes": 65536
+        }
+      }
+    }
+  },
+  "startState": [
+    "immich_postgres is running and accepts pg_dump",
+    "UPLOAD_LOCATION exists and is policy-bound",
+    "the configured Immich data roots are mounted into the backup runtime",
+    "Immich services remain online",
+    "no other immich action owns the serialization key"
+  ],
+  "pre": [
+    {
+      "primitive": "file.write-pipeline",
+      "sourceCommandAlias": "immich-pg-dump",
+      "destinationAlias": "immich-manual-backups",
+      "transforms": [
+        "gzip"
+      ],
+      "nameFromRunId": true
+    },
+    {
+      "primitive": "file.retention",
+      "pathAlias": "immich-upload",
+      "manifestAlias": "immich-manual-backups",
+      "keep": 10
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-upload",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-thumbs",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-encoded-video",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-profile",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-upload-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-thumbs-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-encoded-video-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-profile-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-current-run-output"
+    }
+  ],
+  "core": {
+    "operation": "muckisafe.backup",
+    "sources": [
+      "immich-upload",
+      "immich-thumbs",
+      "immich-encoded-video",
+      "immich-profile"
+    ],
+    "excludedSources": [
+      "DB_DATA_LOCATION",
+      "EXTERNAL_PATH"
+    ],
+    "requiredExitCode": 0
+  },
+  "success": [
+    "a non-empty gzip dump is atomically created under UPLOAD_LOCATION/backups",
+    "the current-run dump and all configured source trees are readable by UID 33",
+    "only manifest-owned manual dumps beyond the keep count are removed",
+    "Immich automatic dumps are untouched",
+    "the core backup exits 0 and includes the current-run dump",
+    "Immich services remain running",
+    "the local Immich version endpoint returns HTTP 200 and 3.3.5"
+  ],
+  "expectedEffects": {
+    "filesCreated": [
+      "immich-upload/backups/immich-db-dump-manual-<run-id>.sql.gz"
+    ],
+    "filesRemoved": [
+      "manifest-owned manual dumps older than the newest 10"
+    ],
+    "acl": [
+      "user:33:rX recursively on each configured Immich source tree"
+    ],
+    "serviceState": [
+      "all Immich containers remain running"
+    ],
+    "forbidden": [
+      "copying live DB_DATA_LOCATION",
+      "backing up EXTERNAL_PATH through this contract"
+    ]
+  },
+  "failureInjections": [
+    {
+      "phase": "policy",
+      "injection": "unknown alias, traversal, symlink or raw host value",
+      "expectedStatus": "failed",
+      "resultCode": "policy_rejected",
+      "retry": "safe",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "pre",
+      "injection": "DB stopped, invalid policy binding, pg_dump/gzip/disk failure or empty output",
+      "expectedStatus": "failed",
+      "resultCode": "pipeline_failed",
+      "retry": "safe",
+      "allowedResidualEffects": [
+        "temporary file removed"
+      ]
+    },
+    {
+      "phase": "pre",
+      "injection": "failure after atomic publish, ACL/read failure or walk limit",
+      "expectedStatus": "failed",
+      "resultCode": "partial_failure",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "manifest-owned current-run dump",
+        "partial read ACLs"
+      ]
+    },
+    {
+      "phase": "pre",
+      "injection": "retention identity mismatch",
+      "expectedStatus": "failed",
+      "resultCode": "retention_rejected",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "no deletion",
+        "current-run dump"
+      ]
+    },
+    {
+      "phase": "core",
+      "injection": "core backup non-zero",
+      "expectedStatus": "failed",
+      "resultCode": "backup_failed",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "current-run dump",
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "post",
+      "injection": "health probe fails after artifacts created",
+      "expectedStatus": "failed",
+      "resultCode": "partial_failure",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "current-run dump",
+        "backup snapshot",
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "crash",
+      "injection": "crash after first host effect",
+      "expectedStatus": "unknown",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "journal-discovered effects only"
+      ],
+      "completionOutcome": "ambiguous",
+      "ambiguityReason": {
+        "code": "immich_effect_outcome_lost",
+        "message": "A host effect may have completed, but the durable journal cannot prove its final artifact/effect set."
+      },
+      "failureTails": false
+    }
+  ],
+  "cleanup": {
+    "testOnly": {
+      "selector": {
+        "destinationAlias": "immich-manual-backups",
+        "artifactRunId": "required",
+        "manifestRecord": true,
+        "deviceInodeMatch": true,
+        "linkCount": 1,
+        "noSymlinks": true
+      },
+      "onIdentityMismatch": "delete_nothing",
+      "aclRestore": {
+        "trustedPreTestSnapshot": true,
+        "rootIdentityMatch": true,
+        "onMismatch": "mutate_nothing"
+      },
+      "snapshots": "test-owned only"
+    },
+    "production": {
+      "retainCurrentRunDump": true,
+      "retainReadAcl": true,
+      "deleteOnlyManifestOwnedByRetention": true,
+      "unmanifestedDeletion": false
+    }
+  },
+  "post": [
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "immich-version",
+      "expectedStatuses": [
+        200
+      ]
+    }
+  ],
+  "retryPolicy": {
+    "beforeFirstHostEffect": "safe",
+    "afterFirstHostEffect": "non_retryable",
+    "crashAfterFirstHostEffect": "unknown"
+  },
+  "requirementMatrix": [
+    {
+      "id": "im-start",
+      "requirement": "DB, roots and services ready",
+      "primitive": "policy validation + service.wait-http",
+      "e2e": "assert DB/root readiness and version endpoint"
+    },
+    {
+      "id": "im-parameters",
+      "requirement": "policy-bound DB/user, paths and principal",
+      "primitive": "sourceCommandAlias + local policy",
+      "e2e": "reject all action-supplied identifiers/paths/UIDs"
+    },
+    {
+      "id": "im-effects",
+      "requirement": "atomic dump, bounded ACL/read walk and retention",
+      "primitive": "write-pipeline + ACL/assert + retention",
+      "e2e": "assert manifest output and only manifest-owned deletion"
+    },
+    {
+      "id": "im-health",
+      "requirement": "services remain available",
+      "primitive": "service.wait-http",
+      "e2e": "HTTP 200 with bounded version JSON"
+    },
+    {
+      "id": "im-failures",
+      "requirement": "partial effects are explicit and non-retryable",
+      "primitive": "ordered executor/journal",
+      "e2e": "crash/failure injection asserts partial_failure or unknown"
+    },
+    {
+      "id": "im-cleanup",
+      "requirement": "cleanup identity-bound",
+      "primitive": "manifest-scoped test cleanup",
+      "e2e": "inode/device/link mismatch deletes nothing"
+    }
+  ],
+  "verificationStatus": "evidence_only_untested_live_and_e2e_waived"
+}

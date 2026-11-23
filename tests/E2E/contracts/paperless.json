@@ -1,0 +1,330 @@
+{
+  "contractVersion": 1,
+  "service": "paperless",
+  "reference": {
+    "version": "3.1.3",
+    "evidence": [
+      "austausch/docker-compose.paperless.neu.yml",
+      "austausch/muckisafe-paperless-db-anleitung.md",
+      "Obsidian/Eingerichtetes/Paperless.md"
+    ],
+    "legacyInvocation": {
+      "command": "/bin/bash",
+      "arguments": [
+        "/scripts/paperless_pre.sh"
+      ],
+      "observedScriptArguments": [],
+      "observedResult": {
+        "exitCode": 1,
+        "stderr": "/scripts/paperless_pre.sh: line 8: 2: unbound variable"
+      },
+      "normative": false,
+      "reason": "The real script and caller configuration are unavailable; Task 10A forbids inventing the missing positional arguments."
+    },
+    "compose": {
+      "webPort": 8091,
+      "webContainerPort": 8000,
+      "databaseHostAlias": "paperless-db",
+      "databasePort": 3306,
+      "databaseName": "paperless",
+      "backupBinary": "/usr/bin/mysqldump",
+      "backupExecutor": "MuckiSafe scheduler",
+      "dataRoots": [
+        "/data/dokumente/data",
+        "/data/dokumente/media",
+        "/data/dokumente/export",
+        "/data/dokumente/consume"
+      ]
+    }
+  },
+  "idempotency": "additive",
+  "serializationKey": "service:paperless",
+  "decision": "The broken and semantically unknown paperless_pre.sh is excluded from the frozen success path. Paperless uses the existing typed MuckiSafe database backup plus file backup; no missing argument is invented and no generic shell primitive is added.",
+  "aliases": {
+    "endpoints": {
+      "paperless-web": {
+        "url": "http://127.0.0.1:8091/",
+        "expectedStatuses": [
+          200,
+          302
+        ],
+        "allowedIpRanges": [
+          "127.0.0.0/8"
+        ],
+        "redirects": false,
+        "timeoutSeconds": 120,
+        "intervalSeconds": 2,
+        "responseConstraints": {
+          "status200": {
+            "locationHeader": "absent"
+          },
+          "status302": {
+            "locationHeaderEquals": "/accounts/login/?next=/",
+            "sameOrigin": true
+          },
+          "maximumBodyBytes": 65536
+        }
+      }
+    },
+    "paths": {
+      "paperless-data": {
+        "root": "/data/dokumente/data",
+        "recursive": true
+      },
+      "paperless-media": {
+        "root": "/data/dokumente/media",
+        "recursive": true
+      },
+      "paperless-export": {
+        "root": "/data/dokumente/export",
+        "recursive": true
+      },
+      "paperless-consume": {
+        "root": "/data/dokumente/consume",
+        "recursive": true
+      }
+    },
+    "principals": {
+      "muckisafe-backup": {
+        "uid": 33,
+        "gid": 33
+      }
+    },
+    "database": {
+      "paperless-database": {
+        "hostAlias": "paperless-db",
+        "port": 3306,
+        "database": "paperless",
+        "credentialReference": "server-side secret reference",
+        "requiredClient": "/usr/bin/mysqldump"
+      }
+    },
+    "checks": {
+      "paperless-data-required-readable": {
+        "pathAlias": "paperless-data",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "paperless-media-required-readable": {
+        "pathAlias": "paperless-media",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "paperless-export-required-readable": {
+        "pathAlias": "paperless-export",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      },
+      "paperless-consume-required-readable": {
+        "pathAlias": "paperless-consume",
+        "readableBy": "muckisafe-backup",
+        "recursive": true
+      }
+    }
+  },
+  "startState": [
+    "Paperless web, MariaDB, Valkey, Gotenberg and Tika are running",
+    "scheduler resolves paperless-db and reaches TCP 3306 through backup-net",
+    "/usr/bin/mysqldump exists in the scheduler runtime",
+    "the database backup principal has only the documented dump grants",
+    "all four data roots exist and are readable by the backup runtime",
+    "no broken legacy pre-hook is attached to the success-path action",
+    "no other paperless action owns the serialization key"
+  ],
+  "pre": [
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-data-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-media-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-export-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-consume-required-readable"
+    }
+  ],
+  "core": {
+    "operations": [
+      {
+        "operation": "muckisafe.database-backup",
+        "databaseAlias": "paperless-database",
+        "requiredExitCode": 0
+      },
+      {
+        "operation": "muckisafe.backup",
+        "sources": [
+          "paperless-data",
+          "paperless-media",
+          "paperless-export",
+          "paperless-consume"
+        ],
+        "requiredExitCode": 0
+      }
+    ]
+  },
+  "post": [
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "paperless-web",
+      "expectedStatuses": [
+        200,
+        302
+      ]
+    }
+  ],
+  "success": [
+    "the typed database backup exits 0 and creates a non-empty repository artifact",
+    "the four Paperless data roots are backed up without permission errors",
+    "the core backup exits 0",
+    "the fixed Paperless endpoint returns HTTP 200 or login redirect 302",
+    "no legacy shell hook is executed"
+  ],
+  "expectedEffects": {
+    "repositoryArtifacts": [
+      "one database-backup artifact",
+      "one file-backup snapshot"
+    ],
+    "serviceState": [
+      "all Paperless services remain running"
+    ],
+    "filesystemMutations": [],
+    "legacyHookMutations": []
+  },
+  "failureInjections": [
+    {
+      "phase": "legacy",
+      "injection": "legacy hook invoked with zero script arguments",
+      "expectedStatus": "failed",
+      "resultCode": "legacy_hook_invalid",
+      "retry": "safe",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "policy",
+      "injection": "unknown alias, raw credential/host/command, traversal or symlink",
+      "expectedStatus": "failed",
+      "resultCode": "policy_rejected",
+      "retry": "safe",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "preflight",
+      "injection": "mysqldump absent, DB DNS/TCP unavailable, grant revoked or root unreadable",
+      "expectedStatus": "failed",
+      "resultCode": "preflight_failed",
+      "retry": "safe",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "core",
+      "injection": "database or file backup fails after artifact creation",
+      "expectedStatus": "failed",
+      "resultCode": "partial_failure",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "repository artifacts identified by artifact ID"
+      ]
+    },
+    {
+      "phase": "post",
+      "injection": "HTTP probe fails after artifacts created",
+      "expectedStatus": "failed",
+      "resultCode": "partial_failure",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "database artifact",
+        "file snapshot"
+      ]
+    },
+    {
+      "phase": "crash",
+      "injection": "crash after first artifact",
+      "expectedStatus": "unknown",
+      "retry": "non_retryable",
+      "allowedResidualEffects": [
+        "journal-discovered repository artifacts only"
+      ],
+      "completionOutcome": "ambiguous",
+      "ambiguityReason": {
+        "code": "paperless_artifact_outcome_lost",
+        "message": "At least one repository artifact may exist, but completion and the final artifact set cannot be proven."
+      },
+      "failureTails": false
+    }
+  ],
+  "cleanup": {
+    "testOnly": {
+      "selector": {
+        "repositoryAlias": "paperless-test-repository",
+        "artifactId": "required",
+        "runId": "required",
+        "manifestRecord": true
+      },
+      "onIdentityMismatch": "delete_nothing",
+      "writeProbe": "remove exact policy-owned relative name",
+      "containerNetworkState": "restore authenticated pre-test fixture state"
+    },
+    "production": {
+      "retention": "MuckiSafe repository policy",
+      "deletePaperlessData": false,
+      "deleteDatabaseOrBrokerVolumes": false
+    }
+  },
+  "prohibited": [
+    "inventing $1, $2 or defaults for paperless_pre.sh",
+    "adding a generic shell primitive",
+    "embedding database credentials in an action definition",
+    "using an arbitrary container, executable or command argument"
+  ],
+  "retryPolicy": {
+    "beforeFirstArtifact": "safe",
+    "afterFirstArtifact": "non_retryable",
+    "crashAfterFirstArtifact": "unknown"
+  },
+  "requirementMatrix": [
+    {
+      "id": "pl-start",
+      "requirement": "stack, DB network, client and roots ready",
+      "primitive": "policy/core preflight",
+      "e2e": "assert services, DNS/TCP, mysqldump and root readability"
+    },
+    {
+      "id": "pl-parameters",
+      "requirement": "fixed DB alias and server-side credential reference",
+      "primitive": "typed database backup",
+      "e2e": "reject credentials/raw host/command in action"
+    },
+    {
+      "id": "pl-effects",
+      "requirement": "database artifact and file snapshot",
+      "primitive": "typed database backup + core backup",
+      "e2e": "assert non-empty artifacts and no permission errors"
+    },
+    {
+      "id": "pl-health",
+      "requirement": "web remains available",
+      "primitive": "service.wait-http",
+      "e2e": "fixed endpoint returns 200 or 302"
+    },
+    {
+      "id": "pl-failures",
+      "requirement": "broken hook and backup faults fail closed",
+      "primitive": "preflight/core executor",
+      "e2e": "zero-arg legacy hook fails; success path never executes it; inject DB/file/health faults"
+    },
+    {
+      "id": "pl-cleanup",
+      "requirement": "artifact-ID-scoped cleanup",
+      "primitive": "repository test cleanup",
+      "e2e": "artifact identity mismatch deletes nothing"
+    }
+  ],
+  "contractStatus": "frozen-success-path-with-legacy-hook-excluded",
+  "verificationStatus": "evidence_only_untested_live_and_e2e_waived"
+}

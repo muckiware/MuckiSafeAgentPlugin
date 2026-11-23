@@ -1,0 +1,17 @@
+# Evidence-only, untested inventory; live-host and E2E execution were waived.
+# Immutable OCI image references selected for future Gate-B E2E fixtures.
+# Digests pin the manifest/index returned by the registry for the exact tag.
+# No latest/release/major-only tag is permitted here.
+
+BITWARDEN_MSSQL_IMAGE=mcr.microsoft.com/mssql/server:2022-CU18-ubuntu-22.04@sha256:ea73825f3d88a23c355ac2f9fdc6bd960fec90171c12c572109b36a558f77bb8
+
+IMMICH_SERVER_IMAGE=ghcr.io/immich-app/immich-server:v3.3.5@sha256:485d546a2e31d6a8b4db8423fcba5c109de8c218d93410af115fd1ccfc4352a6
+IMMICH_MACHINE_LEARNING_IMAGE=ghcr.io/immich-app/immich-machine-learning:v3.3.5@sha256:5b28c9352c8374b8a1ed96fbdd8d6755fea6e43510ec43fdf6538aa02ea40f56
+IMMICH_POSTGRES_IMAGE=ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+IMMICH_VALKEY_IMAGE=docker.io/valkey/valkey:9.0.0-alpine@sha256:bef37d06d4856710973ee31dd1eac1482e4c8e6e7b847f999ad25433e646587b
+
+PAPERLESS_WEBSERVER_IMAGE=ghcr.io/paperless-ngx/paperless-ngx:3.1.3@sha256:aa810a36942c63d4ee70d00eda7236cd3d6acfb7eb3f7987fb568ed14df8817a
+PAPERLESS_MARIADB_IMAGE=docker.io/library/mariadb:12.0.2@sha256:607835cd628b78e2876f6a586d0ec37b296c47683b31ef750002d3d17d3d8f7a
+PAPERLESS_VALKEY_IMAGE=docker.io/valkey/valkey:9.0.0-alpine@sha256:bef37d06d4856710973ee31dd1eac1482e4c8e6e7b847f999ad25433e646587b
+PAPERLESS_GOTENBERG_IMAGE=docker.io/gotenberg/gotenberg:8.34@sha256:67097317623a503ba2a6a7e9ae8db6929a1f7e1bbd88077bacf2d325fbdab923
+PAPERLESS_TIKA_IMAGE=docker.io/apache/tika:3.3.1.0@sha256:90b7fa1dc018434075fce9e1d9b88b1e3d0ea6979d0cf86e116c79a8073ae973

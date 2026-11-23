@@ -1,0 +1,291 @@
+{
+  "contractVersion": 1,
+  "service": "jellyfin",
+  "reference": {
+    "version": "12.4.0",
+    "healthUrl": "http://127.0.0.1:8096/System/Info/Public",
+    "evidence": [
+      "MuckiSafe/docs/jellyfin-backup-prep/jellyfin-control.sh",
+      "MuckiSafe/docs/jellyfin-backup-prep/jellyfin-service.sh",
+      "MuckiSafe/docs/jellyfin-backup-prep/muckisafe-jellyfin-control",
+      "MuckiSafe/docs/jellyfin-backup-prep/muckisafe-jellyfin.path",
+      "MuckiSafe/docs/jellyfin-backup-prep/muckisafe-jellyfin.service"
+    ],
+    "legacyInvocation": {
+      "pre": {
+        "command": "/scripts/jellyfin-control.sh",
+        "arguments": [
+          "stop"
+        ]
+      },
+      "post": {
+        "command": "/scripts/jellyfin-control.sh",
+        "arguments": [
+          "start"
+        ]
+      },
+      "runAs": "www-data"
+    }
+  },
+  "idempotency": "safe",
+  "serializationKey": "service:jellyfin",
+  "aliases": {
+    "services": {
+      "jellyfin": {
+        "unit": "jellyfin.service",
+        "stopTimeoutSeconds": 30,
+        "startTimeoutSeconds": 120,
+        "requireEmptyCgroupAfterStop": true
+      }
+    },
+    "endpoints": {
+      "jellyfin-public-info": {
+        "url": "http://127.0.0.1:8096/System/Info/Public",
+        "expectedStatuses": [
+          200
+        ],
+        "allowedIpRanges": [
+          "127.0.0.0/8"
+        ],
+        "redirects": false,
+        "timeoutSeconds": 120,
+        "intervalSeconds": 1
+      }
+    },
+    "paths": {
+      "jellyfin-data": {
+        "root": "/var/lib/jellyfin",
+        "recursive": true
+      },
+      "jellyfin-config": {
+        "root": "/etc/jellyfin",
+        "recursive": true
+      }
+    },
+    "principals": {
+      "muckisafe-backup": {
+        "uid": 33,
+        "gid": 33
+      }
+    },
+    "checks": {
+      "jellyfin-required-data": {
+        "pathAlias": "jellyfin-data",
+        "readableBy": "muckisafe-backup",
+        "relativePaths": [
+          ".",
+          "data",
+          "data/jellyfin.db"
+        ]
+      },
+      "jellyfin-required-config": {
+        "pathAlias": "jellyfin-config",
+        "readableBy": "muckisafe-backup",
+        "relativePaths": [
+          "."
+        ]
+      }
+    }
+  },
+  "startState": [
+    "jellyfin.service is active and the public-info endpoint returns HTTP 200",
+    "/var/lib/jellyfin and /etc/jellyfin exist",
+    "data/jellyfin.db is the configured SQLite database",
+    "no other jellyfin action owns the serialization key"
+  ],
+  "pre": [
+    {
+      "primitive": "service.control",
+      "serviceAlias": "jellyfin",
+      "operation": "stop"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "jellyfin-data",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "jellyfin-config",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "jellyfin-required-data"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "jellyfin-required-config"
+    }
+  ],
+  "core": {
+    "operation": "muckisafe.backup",
+    "sources": [
+      "jellyfin-data",
+      "jellyfin-config"
+    ],
+    "excludes": [
+      "transcodes"
+    ],
+    "requiredExitCode": 0
+  },
+  "finally": [
+    {
+      "primitive": "service.control",
+      "serviceAlias": "jellyfin",
+      "operation": "start"
+    },
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "jellyfin-public-info",
+      "expectedStatuses": [
+        200
+      ]
+    }
+  ],
+  "success": [
+    "the unit is inactive and its cgroup has no remaining processes before backup",
+    "data, database and config are readable by UID 33",
+    "the core backup exits 0 while Jellyfin is stopped",
+    "the finally action returns Jellyfin to active and HTTP 200"
+  ],
+  "expectedEffects": {
+    "serviceTransitions": [
+      "active -> inactive -> active"
+    ],
+    "acl": [
+      "user:33:rX recursively on /var/lib/jellyfin",
+      "user:33:rX recursively on /etc/jellyfin"
+    ],
+    "filesCreated": [],
+    "mediaLibraryIncluded": false
+  },
+  "failureInjections": [
+    {
+      "phase": "policy",
+      "injection": "unknown alias, traversal, symlink or raw host value",
+      "expectedStatus": "failed",
+      "resultCode": "policy_rejected",
+      "retry": "safe",
+      "finally": "not_required",
+      "allowedResidualEffects": []
+    },
+    {
+      "phase": "pre",
+      "injection": "stop failure, timeout or non-empty cgroup",
+      "expectedStatus": "failed",
+      "resultCode": "service_stop_failed",
+      "retry": "safe",
+      "finally": "start_and_wait",
+      "allowedResidualEffects": [
+        "service may be inactive"
+      ]
+    },
+    {
+      "phase": "pre",
+      "injection": "missing path, ACL failure, unreadable object or walk limit",
+      "expectedStatus": "failed",
+      "resultCode": "verification_failed",
+      "retry": "safe",
+      "finally": "start_and_wait",
+      "allowedResidualEffects": [
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "core",
+      "injection": "backup failure",
+      "expectedStatus": "failed",
+      "resultCode": "backup_failed",
+      "retry": "safe",
+      "finally": "start_and_wait",
+      "allowedResidualEffects": [
+        "snapshot fragment",
+        "read ACLs"
+      ]
+    },
+    {
+      "phase": "finally",
+      "injection": "start or HTTP readiness failure after primary error",
+      "expectedStatus": "failed",
+      "resultCode": "primary_error_preserved",
+      "retry": "safe",
+      "finally": "attempted_once",
+      "allowedResidualEffects": [
+        "service unavailable"
+      ]
+    }
+  ],
+  "cleanup": {
+    "always": {
+      "finally": [
+        "start jellyfin",
+        "wait for HTTP 200"
+      ],
+      "primaryErrorPrecedence": true
+    },
+    "testOnly": {
+      "serviceState": "restore authenticated pre-test state",
+      "aclRestore": {
+        "trustedPreTestSnapshot": true,
+        "pathAliases": [
+          "jellyfin-data",
+          "jellyfin-config"
+        ],
+        "rootIdentityMatch": true,
+        "onMismatch": "mutate_nothing"
+      },
+      "snapshots": "test-owned only"
+    },
+    "production": {
+      "retainReadAcl": true
+    }
+  },
+  "task10BRequirements": [
+    "service.control stop must verify both inactive unit state and an empty unit cgroup",
+    "the action must never supply a unit name, URL, path or UID"
+  ],
+  "retryPolicy": {
+    "allSteps": "safe",
+    "finally": "always_attempt"
+  },
+  "requirementMatrix": [
+    {
+      "id": "jf-start",
+      "requirement": "unit, paths, DB and endpoint ready",
+      "primitive": "policy validation + service.wait-http",
+      "e2e": "assert unit/path/DB presence and HTTP 200"
+    },
+    {
+      "id": "jf-parameters",
+      "requirement": "fixed unit, roots, URL and principal",
+      "primitive": "local policy aliases",
+      "e2e": "reject raw unit/path/URL/UID values"
+    },
+    {
+      "id": "jf-effects",
+      "requirement": "empty cgroup and readable stopped snapshot",
+      "primitive": "service.control + ACL/read assertion",
+      "e2e": "assert inactive empty cgroup and UID-33 walk"
+    },
+    {
+      "id": "jf-health",
+      "requirement": "always restored to healthy",
+      "primitive": "finally service.control + service.wait-http",
+      "e2e": "inject pre/core failure and assert HTTP 200 after finally"
+    },
+    {
+      "id": "jf-failures",
+      "requirement": "primary error precedence",
+      "primitive": "action executor finally semantics",
+      "e2e": "inject primary plus restart failure; assert primary retained"
+    },
+    {
+      "id": "jf-cleanup",
+      "requirement": "restore fixture state safely",
+      "primitive": "trusted fixture cleanup",
+      "e2e": "root identity mismatch mutates nothing"
+    }
+  ],
+  "verificationStatus": "evidence_only_untested_live_and_e2e_waived"
+}
