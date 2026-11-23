@@ -56,10 +56,11 @@ final class ConcurrentClaimTest extends TestCase
         $this->createJob($this->hostId, 'concurrent-second-row');
         $results = $this->runClaimChildren($this->hostId, 50);
 
+        $errors = array_values(array_filter($results, static fn (string $value): bool => str_starts_with($value, 'error:')));
+        self::assertSame([], $errors);
         self::assertCount(100, $results);
         self::assertSame(1, count(array_filter($results, static fn (string $value): bool => $value === 'claimed')));
         self::assertSame(99, count(array_filter($results, static fn (string $value): bool => $value === 'null')));
-        self::assertSame([], array_values(array_filter($results, static fn (string $value): bool => str_starts_with($value, 'error:'))));
     }
 
     public function testDifferentRowsForSameHostRaceThroughActiveAgentGuard(): void
@@ -102,7 +103,7 @@ final class ConcurrentClaimTest extends TestCase
         $this->createJob($this->hostId, 'host-a-job');
         $this->createJob($secondHost, 'host-b-job');
 
-        $results = $this->runSimultaneousSingleClaims([$this->hostId, $secondHost]);
+        $results = $this->runSimultaneousSingleClaims([$this->hostId, $secondHost], null, false);
 
         self::assertSame(['claimed', 'claimed'], $results);
     }
@@ -353,7 +354,11 @@ final class ConcurrentClaimTest extends TestCase
      *  @param list<string>|null $candidateJobIds
      *  @return list<string>
      */
-    private function runSimultaneousSingleClaims(array $hostIds, ?array $candidateJobIds = null): array
+    private function runSimultaneousSingleClaims(
+        array $hostIds,
+        ?array $candidateJobIds = null,
+        bool $synchronizeAfterLock = true
+    ): array
     {
         $children = [];
         $results = [];
@@ -375,15 +380,18 @@ final class ConcurrentClaimTest extends TestCase
                         if (trim((string) fgets($pair[1])) !== 'go') {
                             throw new \RuntimeException('Claim start barrier timed out.');
                         }
-                        $claim = (new JobClaimer(
-                            $connection,
-                            static function () use ($pair): void {
+                        $afterCandidateLocked = $synchronizeAfterLock
+                            ? static function () use ($pair): void {
                                 fwrite($pair[1], "locked\n");
                                 fflush($pair[1]);
                                 if (trim((string) fgets($pair[1])) !== 'continue') {
                                     throw new \RuntimeException('Claim lock barrier timed out.');
                                 }
-                            },
+                            }
+                            : null;
+                        $claim = (new JobClaimer(
+                            $connection,
+                            $afterCandidateLocked,
                             $candidateJobId
                         ))->claim($hostId);
                         fwrite($pair[1], ($claim->job === null ? 'null' : 'claimed') . "\n");
@@ -408,12 +416,14 @@ final class ConcurrentClaimTest extends TestCase
                 fwrite($child['socket'], "go\n");
                 fflush($child['socket']);
             }
-            foreach ($children as $child) {
-                self::assertSame('locked', trim((string) fgets($child['socket'])));
-            }
-            foreach ($children as $child) {
-                fwrite($child['socket'], "continue\n");
-                fflush($child['socket']);
+            if ($synchronizeAfterLock) {
+                foreach ($children as $child) {
+                    self::assertSame('locked', trim((string) fgets($child['socket'])));
+                }
+                foreach ($children as $child) {
+                    fwrite($child['socket'], "continue\n");
+                    fflush($child['socket']);
+                }
             }
             foreach ($children as $child) {
                 $results[] = trim((string) fgets($child['socket']));

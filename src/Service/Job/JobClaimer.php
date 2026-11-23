@@ -172,7 +172,7 @@ final class JobClaimer
     private function isActiveAgentGuardViolation(string $message): bool
     {
         return preg_match(
-            "~SQLSTATE\\[23000\\].*\\b1062 Duplicate entry '[^']*' for key '(?:muwa_agent_job\\.)?uniq_active_agent'$~D",
+            "~SQLSTATE\\[23000\\].*\\b1062 Duplicate entry .* for key '(?:muwa_agent_job\\.)?uniq_active_agent'$~D",
             $message
         ) === 1;
     }

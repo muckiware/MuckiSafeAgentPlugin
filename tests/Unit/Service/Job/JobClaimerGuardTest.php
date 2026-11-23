@@ -27,7 +27,7 @@ final class JobClaimerGuardTest extends TestCase
         ));
         self::assertTrue($method->invoke(
             $claimer,
-            "An exception occurred while executing a query: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'abc' for key 'muwa_agent_job.uniq_active_agent'"
+            "An exception occurred while executing a query: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry 'binary'value' for key 'muwa_agent_job.uniq_active_agent'"
         ));
         self::assertFalse($method->invoke(
             $claimer,
