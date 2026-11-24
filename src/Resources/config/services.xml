@@ -3,6 +3,11 @@
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xsi:schemaLocation="http://symfony.com/schema/dic/services
                                http://symfony.com/schema/dic/services/services-1.0.xsd">
+    <parameters>
+        <!-- Global flat wakeup directory inside the app/scheduler containers (implementation plan 2.9). -->
+        <parameter key="muwa_agent.wakeup_directory">/var/run/mucki-agent/wakeup</parameter>
+    </parameters>
+
     <services>
         <service id="MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard" public="true">
             <argument type="service" id="plugin.repository"/>
@@ -94,6 +99,27 @@
             <argument type="service" id="Doctrine\DBAL\Connection"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\OutputTailNormalizer"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobReaper" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\FailureTailPruner" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupCleaner" public="true">
+            <argument>%muwa_agent.wakeup_directory%</argument>
+        </service>
+        <service id="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTask">
+            <tag name="shopware.scheduled.task"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTaskHandler" public="true">
+            <argument type="service" id="scheduled_task.repository"/>
+            <argument type="service" id="logger"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobReaper"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ReplayGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\FailureTailPruner"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupCleaner"/>
+            <tag name="messenger.message_handler" handles="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTask"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
