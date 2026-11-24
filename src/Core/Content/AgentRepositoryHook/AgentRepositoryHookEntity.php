@@ -12,6 +12,7 @@
 
 namespace MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook;
 
+use MuckiSafeAgentPlugin\Core\Content\AgentHost\AgentHostEntity;
 use Shopware\Core\Framework\DataAbstractionLayer\Entity;
 use Shopware\Core\Framework\DataAbstractionLayer\EntityIdTrait;
 
@@ -27,6 +28,7 @@ final class AgentRepositoryHookEntity extends Entity
     protected int $timeoutSeconds;
     protected bool $failOnError;
     protected bool $enabled;
+    protected ?AgentHostEntity $agentHost = null;
 
     public function getFacilityRepositoryId(): string
     {
@@ -106,5 +108,15 @@ final class AgentRepositoryHookEntity extends Entity
     public function setEnabled(bool $enabled): void
     {
         $this->enabled = $enabled;
+    }
+
+    public function getAgentHost(): ?AgentHostEntity
+    {
+        return $this->agentHost;
+    }
+
+    public function setAgentHost(?AgentHostEntity $agentHost): void
+    {
+        $this->agentHost = $agentHost;
     }
 }

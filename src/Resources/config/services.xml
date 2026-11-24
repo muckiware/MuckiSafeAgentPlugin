@@ -121,6 +121,20 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupCleaner"/>
             <tag name="messenger.message_handler" handles="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTask"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Hook\LegacyHookConflictGuard" public="true">
+            <!-- Facility's DAL repository; missing (Facility inactive) fails closed instead of breaking the container. -->
+            <argument type="service" id="muwa_backup_repository.repository" on-invalid="null"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="muwa_agent_repository_hook.repository"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\LegacyHookConflictGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Admin\RepositoryHookController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator"/>
+            <tag name="controller.service_arguments"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
