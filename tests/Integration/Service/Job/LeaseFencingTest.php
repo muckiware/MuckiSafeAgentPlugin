@@ -325,29 +325,62 @@ final class LeaseFencingTest extends TestCase
         ))->heartbeat($this->hostId, $this->wireUuid($this->jobId), self::TOKEN, self::VERSION);
     }
 
-    public function testAmbiguousCompletionPolicyMapsOnlyEligibleRunningOrCancellingWorkToUnknown(): void
+    public function testCompletionPolicyMapsOnlyEligibleOutcomeStatusDeadlineCombinations(): void
     {
         $guard = $this->guard();
-        self::assertSame('unknown', $guard->completionTerminalStatus(
-            'running',
-            'ambiguous',
-            $this->now->modify('+1 minute'),
-            $this->now->modify('+10 minutes')
-        ));
-        self::assertSame('unknown', $guard->completionTerminalStatus(
-            'cancel_requested',
-            'ambiguous',
-            $this->now->modify('-1 minute'),
-            $this->now
-        ));
+        $validLease = $this->now->modify('+1 minute');
+        $phaseDeadline = $this->now->modify('+10 minutes');
+        $expiredLease = $this->now->modify('-1 minute');
 
-        $this->expectException(ClaimConflict::class);
-        $guard->completionTerminalStatus(
-            'cancel_requested',
-            'succeeded',
-            $this->now->modify('+1 minute'),
-            $this->now
+        foreach ([
+            ['succeeded', 'succeeded'],
+            ['failed', 'failed'],
+            ['timed_out', 'timed_out'],
+            ['ambiguous', 'unknown'],
+        ] as [$outcome, $terminalStatus]) {
+            self::assertSame(
+                $terminalStatus,
+                $guard->completionTerminalStatus('running', $outcome, $validLease, $phaseDeadline, $this->now)
+            );
+        }
+
+        self::assertSame(
+            'unknown',
+            $guard->completionTerminalStatus('cancel_requested', 'ambiguous', $expiredLease, $phaseDeadline, $this->now)
         );
+        self::assertSame(
+            'timed_out',
+            $guard->completionTerminalStatus('cancel_requested', 'timed_out', $expiredLease, $phaseDeadline, $this->now)
+        );
+        self::assertSame(
+            'timed_out',
+            $guard->completionTerminalStatus(
+                'cancel_requested',
+                'timed_out',
+                $expiredLease,
+                $this->now->modify('+10 minutes'),
+                $this->now->modify('+10 minutes')
+            ),
+            'The phase deadline itself is inclusive.'
+        );
+
+        foreach ([
+            ['cancel_requested', 'succeeded', $validLease, $phaseDeadline, $this->now],
+            ['cancel_requested', 'failed', $validLease, $phaseDeadline, $this->now],
+            ['cancel_requested', 'ambiguous', $expiredLease, $phaseDeadline, $this->now->modify('+10 minutes 1 second')],
+            ['running', 'succeeded', $expiredLease, $phaseDeadline, $this->now],
+            ['claimed', 'succeeded', $validLease, $phaseDeadline, $this->now],
+            ['queued', 'timed_out', $validLease, $phaseDeadline, $this->now],
+            ['succeeded', 'succeeded', $validLease, $phaseDeadline, $this->now],
+            ['running', 'succeeded', $validLease, $phaseDeadline, $this->now->modify('+10 minutes 1 second')],
+        ] as [$status, $outcome, $lease, $deadline, $now]) {
+            try {
+                $guard->completionTerminalStatus($status, $outcome, $lease, $deadline, $now);
+                self::fail(sprintf('The combination %s/%s must be ineligible.', $status, $outcome));
+            } catch (ClaimConflict) {
+                self::addToAssertionCount(1);
+            }
+        }
     }
 
     /** @return list<string> */

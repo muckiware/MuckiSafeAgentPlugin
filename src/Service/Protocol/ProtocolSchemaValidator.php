@@ -15,7 +15,7 @@ namespace MuckiSafeAgentPlugin\Service\Protocol;
 final class ProtocolSchemaValidator
 {
     private const SUPPORTED_KEYWORDS = [
-        '$schema', '$id', 'title', 'type', 'additionalProperties', 'required', 'properties',
+        '$schema', '$id', 'title', 'description', 'type', 'additionalProperties', 'required', 'properties',
         'minLength', 'maxLength', 'pattern', 'enum', 'minItems', 'maxItems', 'uniqueItems', 'items',
         'minimum', 'maximum', 'const', 'oneOf', 'not',
     ];

@@ -122,7 +122,12 @@ final class JobTransitionGuard
     }
 
     /**
-     * Central completion policy seam for Task 13. It performs no persistence.
+     * Central completion policy. It performs no persistence: the caller owns
+     * the locked row and passes the single transaction-scoped server
+     * timestamp. `running` completions require a still valid lease; a
+     * `cancel_requested` claim accepts timeout and ambiguous completion up
+     * to and including the materialized phase deadline, long after lease
+     * expiry.
      *
      * @throws ClaimConflict when the status/outcome/deadline combination is ineligible
      */
@@ -130,23 +135,27 @@ final class JobTransitionGuard
         string $status,
         string $outcome,
         \DateTimeImmutable $leaseExpiresAt,
-        \DateTimeImmutable $phaseDeadline
+        \DateTimeImmutable $phaseDeadline,
+        \DateTimeImmutable $serverNow
     ): string {
-        $now = $this->serverNow();
-        if ($status === 'running' && $this->wireBoundary($leaseExpiresAt) > $now) {
+        if ($status === 'running' && $this->wireBoundary($leaseExpiresAt) > $serverNow) {
             return match ($outcome) {
+                'succeeded' => 'succeeded',
+                'failed' => 'failed',
+                'timed_out' => 'timed_out',
                 'ambiguous' => 'unknown',
-                default => throw new ClaimConflict('Task 12 exposes only ambiguous completion policy for running jobs.'),
+                default => throw new ClaimConflict('The outcome is not part of the protocol.'),
             };
         }
-        if ($status === 'cancel_requested' && $now <= $this->wireBoundary($phaseDeadline)) {
+        if ($status === 'cancel_requested' && $serverNow <= $this->wireBoundary($phaseDeadline)) {
             return match ($outcome) {
                 'timed_out' => 'timed_out',
                 'ambiguous' => 'unknown',
                 default => throw new ClaimConflict('Cancellation accepts only timed-out or ambiguous completion.'),
             };
         }
-        throw new ClaimConflict('Claim is not eligible for completion.');
+
+        throw new ClaimConflict('The claim is not eligible for completion.');
     }
 
     /** @return array<string, mixed> */

@@ -85,6 +85,16 @@
         <service id="MuckiSafeAgentPlugin\Service\Job\JobHeartbeat" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobCompleteRequestDecoder">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\OutputTailNormalizer"/>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobCompletion" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\OutputTailNormalizer"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
@@ -110,6 +120,11 @@
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobHeartbeatController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobHeartbeat"/>
+            <tag name="controller.service_arguments"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Agent\JobCompleteController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCompleteRequestDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCompletion"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
