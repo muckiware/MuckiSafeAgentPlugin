@@ -17,7 +17,7 @@ final class ProtocolSchemaValidator
     private const SUPPORTED_KEYWORDS = [
         '$schema', '$id', 'title', 'type', 'additionalProperties', 'required', 'properties',
         'minLength', 'maxLength', 'pattern', 'enum', 'minItems', 'maxItems', 'uniqueItems', 'items',
-        'minimum', 'maximum',
+        'minimum', 'maximum', 'const', 'oneOf', 'not',
     ];
 
     public function firstViolation(\stdClass $schema, mixed $value): ?string
@@ -30,16 +30,45 @@ final class ProtocolSchemaValidator
         if (isset($schema->type) && !$this->matchesType($schema->type, $value)) {
             return 'type';
         }
+        if (property_exists($schema, 'const') && $value !== $schema->const) {
+            return 'const';
+        }
         if (isset($schema->enum) && !in_array($value, $schema->enum, true)) {
             return 'enum';
         }
-        return match (true) {
+        $baseViolation = match (true) {
             is_string($value) => $this->stringViolation($schema, $value),
             is_int($value) => $this->integerViolation($schema, $value),
             is_array($value) => $this->arrayViolation($schema, $value),
             $value instanceof \stdClass => $this->objectViolation($schema, $value),
             default => null,
         };
+        if ($baseViolation !== null) {
+            return $baseViolation;
+        }
+        if (isset($schema->oneOf)) {
+            $matches = 0;
+            foreach ($schema->oneOf as $subschema) {
+                if (!$subschema instanceof \stdClass) {
+                    throw new \LogicException('Protocol schema oneOf member must be an object.');
+                }
+                if ($this->firstViolation($subschema, $value) === null) {
+                    ++$matches;
+                }
+            }
+            if ($matches !== 1) {
+                return 'oneOf';
+            }
+        }
+        if (isset($schema->not)) {
+            if (!$schema->not instanceof \stdClass) {
+                throw new \LogicException('Protocol schema not member must be an object.');
+            }
+            if ($this->firstViolation($schema->not, $value) === null) {
+                return 'not';
+            }
+        }
+        return null;
     }
 
     /** @param string|list<string> $type */
@@ -118,7 +147,10 @@ final class ProtocolSchemaValidator
         }
         foreach (get_object_vars($value) as $name => $propertyValue) {
             if (!array_key_exists($name, $properties)) {
-                return ($schema->additionalProperties ?? true) === false ? 'additionalProperties' : null;
+                if (($schema->additionalProperties ?? true) === false) {
+                    return 'additionalProperties';
+                }
+                continue;
             }
             if ($this->firstViolation($properties[$name], $propertyValue) !== null) {
                 return 'properties';

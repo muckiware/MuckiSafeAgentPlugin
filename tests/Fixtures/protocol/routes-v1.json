@@ -9,7 +9,7 @@
       "name": "api.action.muwa.agent.v1.host_heartbeat",
       "method": "POST",
       "path": "/api/_action/muwa/agent/v1/heartbeat",
-      "controller": "MuckiSafeAgentPlugin\\Controller\\Api\\HostHeartbeatController::heartbeat",
+      "controller": "MuckiSafeAgentPlugin\\Controller\\Agent\\HostHeartbeatController::heartbeat",
       "bodyLimitBytes": 16384,
       "requestSchema": "heartbeat-request",
       "responseSchema": "heartbeat-response"
@@ -18,7 +18,7 @@
       "name": "api.action.muwa.agent.v1.job_claim",
       "method": "POST",
       "path": "/api/_action/muwa/agent/v1/jobs/claim",
-      "controller": "MuckiSafeAgentPlugin\\Controller\\Api\\JobClaimController::claim",
+      "controller": "MuckiSafeAgentPlugin\\Controller\\Agent\\JobClaimController::claim",
       "bodyLimitBytes": 1024,
       "requestSchema": "claim-request",
       "responseSchema": "claim-response"
@@ -27,7 +27,7 @@
       "name": "api.action.muwa.agent.v1.job_start",
       "method": "POST",
       "path": "/api/_action/muwa/agent/v1/jobs/{jobId}/start",
-      "controller": "MuckiSafeAgentPlugin\\Controller\\Api\\JobStartController::start",
+      "controller": "MuckiSafeAgentPlugin\\Controller\\Agent\\JobStartController::start",
       "bodyLimitBytes": 4096,
       "requestSchema": "job-start-request",
       "responseSchema": "job-start-response"
@@ -36,7 +36,7 @@
       "name": "api.action.muwa.agent.v1.job_heartbeat",
       "method": "POST",
       "path": "/api/_action/muwa/agent/v1/jobs/{jobId}/heartbeat",
-      "controller": "MuckiSafeAgentPlugin\\Controller\\Api\\JobHeartbeatController::heartbeat",
+      "controller": "MuckiSafeAgentPlugin\\Controller\\Agent\\JobHeartbeatController::heartbeat",
       "bodyLimitBytes": 4096,
       "requestSchema": "job-heartbeat-request",
       "responseSchema": "job-heartbeat-response"
@@ -45,7 +45,7 @@
       "name": "api.action.muwa.agent.v1.job_complete",
       "method": "POST",
       "path": "/api/_action/muwa/agent/v1/jobs/{jobId}/complete",
-      "controller": "MuckiSafeAgentPlugin\\Controller\\Api\\JobCompleteController::complete",
+      "controller": "MuckiSafeAgentPlugin\\Controller\\Agent\\JobCompleteController::complete",
       "bodyLimitBytes": 262144,
       "requestSchema": "job-complete-request",
       "responseSchema": "job-complete-response"

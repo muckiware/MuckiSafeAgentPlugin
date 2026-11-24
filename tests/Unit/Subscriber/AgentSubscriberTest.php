@@ -154,7 +154,7 @@ final class AgentSubscriberTest extends TestCase
         $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($payload);
         self::assertSame(AgentErrorCode::ReplayDetected->value, $payload['code']);
-        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', (string) $payload['traceId']);
         self::assertSame($agent, $request->attributes->get(AgentAuthenticationSubscriber::AUTH_ATTRIBUTE));
     }
 
@@ -223,7 +223,7 @@ final class AgentSubscriberTest extends TestCase
         $payload = json_decode((string) $response->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertIsArray($payload);
         self::assertSame(AgentErrorCode::InternalError->value, $payload['code']);
-        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', (string) $payload['traceId']);
 
         // the kernel passes exception responses through kernel.response,
         // where the same subscriber signs them — emulate that pass here

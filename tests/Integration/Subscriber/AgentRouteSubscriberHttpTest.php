@@ -81,7 +81,6 @@ final class AgentRouteSubscriberHttpTest extends TestCase
         $provisioner = self::getContainer()->get(AgentProvisioner::class);
         self::assertInstanceOf(AgentProvisioner::class, $provisioner);
         $agent = $provisioner->provision('subscriber-http-host');
-        self::assertIsArray($agent);
         $this->agent = $agent;
         $this->secretBytes = sodium_base642bin($this->agent['secret'], SODIUM_BASE64_VARIANT_URLSAFE_NO_PADDING, '');
         self::assertSame(32, strlen($this->secretBytes));
@@ -175,7 +174,7 @@ final class AgentRouteSubscriberHttpTest extends TestCase
         self::assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
         $payload = $this->decodeJson($response);
         self::assertSame(AgentErrorCode::SignatureInvalid->value, $payload['code']);
-        self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $payload['traceId']);
+        self::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', (string) $payload['traceId']);
         self::assertArrayHasKey('message', $payload);
 
         self::assertNotNull($response->headers->get('X-Mucki-Agent-Signature'));

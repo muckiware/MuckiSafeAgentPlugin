@@ -72,6 +72,19 @@
         <service id="MuckiSafeAgentPlugin\Service\Job\JobClaimer" public="true">
             <argument type="service" id="Doctrine\DBAL\Connection"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobStarter" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobHeartbeat" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\StrictJsonObjectDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Protocol\ProtocolSchemaValidator"/>
@@ -87,6 +100,16 @@
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobClaimController" public="true">
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimer"/>
+            <tag name="controller.service_arguments"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Agent\JobStartController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobStarter"/>
+            <tag name="controller.service_arguments"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Agent\JobHeartbeatController" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobHeartbeat"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">

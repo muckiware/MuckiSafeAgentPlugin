@@ -44,8 +44,14 @@ final class AgentErrorResponses
         return new JsonResponse([
             'code' => $code->value,
             'message' => self::MESSAGES[$code->value],
-            'traceId' => Uuid::randomHex(),
+            'traceId' => self::wireUuid(Uuid::randomHex()),
         ], $code->httpStatus());
+    }
+
+    private static function wireUuid(string $hex): string
+    {
+        return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-' . substr($hex, 12, 4)
+            . '-' . substr($hex, 16, 4) . '-' . substr($hex, 20, 12);
     }
 
     /**

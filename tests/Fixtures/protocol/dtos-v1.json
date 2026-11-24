@@ -20,7 +20,10 @@
     "items",
     "minItems",
     "maxItems",
-    "uniqueItems"
+    "uniqueItems",
+    "const",
+    "oneOf",
+    "not"
   ],
   "cases": [
     {
@@ -1019,6 +1022,29 @@
         "leaseVersion": 3,
         "leaseExpiresAt": "2026-11-22T12:00:40Z",
         "stopRequested": true,
+        "stopDeadline": "2026-11-22T12:09:50Z"
+      }
+    },
+    {
+      "schema": "job-heartbeat-response",
+      "name": "stop requested without deadline",
+      "valid": false,
+      "violation": "oneOf",
+      "document": {
+        "leaseVersion": 3,
+        "leaseExpiresAt": "2026-11-22T12:00:40Z",
+        "stopRequested": true
+      }
+    },
+    {
+      "schema": "job-heartbeat-response",
+      "name": "running with stop deadline",
+      "valid": false,
+      "violation": "oneOf",
+      "document": {
+        "leaseVersion": 3,
+        "leaseExpiresAt": "2026-11-22T12:00:40Z",
+        "stopRequested": false,
         "stopDeadline": "2026-11-22T12:09:50Z"
       }
     },

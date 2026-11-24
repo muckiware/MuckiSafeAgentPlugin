@@ -111,18 +111,58 @@ func (v schemaValidator) firstViolation(schema map[string]any, value any) (strin
 			return "type", err
 		}
 	}
+	if constant, ok := schema["const"]; ok && !reflect.DeepEqual(constant, value) {
+		return "const", nil
+	}
 	if enum, ok := schema["enum"].([]any); ok && !inEnum(enum, value) {
 		return "enum", nil
 	}
+	var baseViolation string
+	var err error
 	switch typed := value.(type) {
 	case string:
-		return stringViolation(schema, typed), nil
+		baseViolation = stringViolation(schema, typed)
 	case json.Number:
-		return integerViolation(schema, typed)
+		baseViolation, err = integerViolation(schema, typed)
 	case []any:
-		return v.arrayViolation(schema, typed)
+		baseViolation, err = v.arrayViolation(schema, typed)
 	case map[string]any:
-		return v.objectViolation(schema, typed)
+		baseViolation, err = v.objectViolation(schema, typed)
+	}
+	if err != nil || baseViolation != "" {
+		return baseViolation, err
+	}
+	if alternatives, ok := schema["oneOf"].([]any); ok {
+		matches := 0
+		for _, alternative := range alternatives {
+			subschema, ok := alternative.(map[string]any)
+			if !ok {
+				return "", fmt.Errorf("oneOf member is not an object")
+			}
+			violation, subErr := v.firstViolation(subschema, value)
+			if subErr != nil {
+				return "", subErr
+			}
+			if violation == "" {
+				matches++
+			}
+		}
+		if matches != 1 {
+			return "oneOf", nil
+		}
+	}
+	if negated, ok := schema["not"]; ok {
+		subschema, ok := negated.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("not member is not an object")
+		}
+		violation, subErr := v.firstViolation(subschema, value)
+		if subErr != nil {
+			return "", subErr
+		}
+		if violation == "" {
+			return "not", nil
+		}
 	}
 	return "", nil
 }
