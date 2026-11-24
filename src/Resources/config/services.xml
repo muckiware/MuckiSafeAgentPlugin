@@ -133,6 +133,34 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\LegacyHookConflictGuard"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobWaiter" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobReaper"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Hook\HostAgentHookExecutor" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCreator"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobWaiter"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Hook\BackupRunCoordinator" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\LegacyHookConflictGuard"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\HostAgentHookExecutor"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Subscriber\FacilityBackupBeforeSubscriber" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\BackupRunCoordinator"/>
+            <tag name="kernel.event_subscriber"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Subscriber\FacilityBackupAfterSubscriber" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\BackupRunCoordinator"/>
+            <tag name="kernel.event_subscriber"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Subscriber\FacilityBackupFinishedSubscriber" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\BackupRunCoordinator"/>
+            <tag name="kernel.event_subscriber"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\RepositoryHookController" public="true">
             <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator"/>
