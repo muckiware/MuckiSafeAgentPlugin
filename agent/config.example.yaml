@@ -1,0 +1,19 @@
+# MuckiSafe agent configuration (V1). Unknown keys are rejected.
+server:
+  # https:// is the default. http:// additionally requires
+  # allowInsecureHttp: true and is only integrity-protected (HMAC),
+  # never confidential. There is no option to skip TLS verification.
+  url: https://backup.example.org
+  allowInsecureHttp: false
+  # Public key id and one-time secret shown when the agent was provisioned.
+  keyId: 0123456789abcdef0123456789abcdef
+  # Root-owned regular file, mode 0600 or 0400, containing only the secret.
+  secretFile: /etc/mucki-agent/secret
+  requestTimeout: 30s
+agent:
+  pollInterval: 10s
+  heartbeatInterval: 10s
+  leaseDuration: 30s
+  maxConcurrency: 1
+  wakeupDirectory: /var/lib/mucki-agent/wakeup
+  stateDirectory: /var/lib/mucki-agent/state
