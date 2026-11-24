@@ -10,6 +10,8 @@ import (
 
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/api"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/config"
+	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/executor"
+	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/policy"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/version"
 )
 
@@ -32,9 +34,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
-// validate loads the configuration and the secret and builds the API client
-// without contacting the server, so the same start-up checks and warnings
-// apply as for the running agent.
+// validate loads the configuration, the secret and the policy and builds the
+// API client without contacting the server, so the same start-up checks and
+// warnings apply as for the running agent.
 func validate(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("config validate", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
@@ -62,6 +64,10 @@ func validate(args []string, stdout, stderr io.Writer) int {
 		Logger:            slog.New(slog.NewTextHandler(stderr, nil)),
 	})
 	if err != nil {
+		fmt.Fprintln(stderr, "config validate:", err)
+		return 1
+	}
+	if _, err := policy.Load(cfg.Agent.PolicyFile, executor.PolicyDecoders()); err != nil {
 		fmt.Fprintln(stderr, "config validate:", err)
 		return 1
 	}

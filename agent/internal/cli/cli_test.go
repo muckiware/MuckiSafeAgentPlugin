@@ -20,12 +20,20 @@ func run(args ...string) (int, string, string) {
 
 func setup(t *testing.T, server string, secretContent string) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	secretFile := filepath.Join(dir, "secret")
 	if err := os.WriteFile(secretFile, []byte(secretContent), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	body := "server:\n" + server + "  keyId: 0123456789abcdef0123456789abcdef\n  secretFile: " + secretFile + "\n"
+	policyFile := filepath.Join(dir, "policy.yaml")
+	if err := os.WriteFile(policyFile, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body := "server:\n" + server + "  keyId: 0123456789abcdef0123456789abcdef\n  secretFile: " + secretFile + "\n" +
+		"agent:\n  policyFile: " + policyFile + "\n"
 	path := filepath.Join(dir, "config.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -87,5 +95,15 @@ func TestUsageErrors(t *testing.T) {
 		if code, _, stderr := run(args...); code != 2 || !strings.Contains(stderr, "usage") {
 			t.Errorf("%v: code %d, stderr %q", args, code, stderr)
 		}
+	}
+}
+
+func TestConfigValidateRejectsAnInvalidPolicy(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(path), "policy.yaml"), []byte("version: 1\nshell:\n  any: /bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, stderr := run("config", "validate", "--config", path); code != 1 || !strings.Contains(stderr, "policy") {
+		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
 }

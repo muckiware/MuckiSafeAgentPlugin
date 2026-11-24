@@ -1,4 +1,5 @@
 # MuckiSafe agent configuration (V1). Unknown keys are rejected.
+# This file must be owned by root:root with mode 0600.
 server:
   # https:// is the default. http:// additionally requires
   # allowInsecureHttp: true and is only integrity-protected (HMAC),
@@ -17,3 +18,6 @@ agent:
   maxConcurrency: 1
   wakeupDirectory: /var/lib/mucki-agent/wakeup
   stateDirectory: /var/lib/mucki-agent/state
+  # Root-owned local alias policy (mode 0644 or stricter); the only source of
+  # host paths, units, containers, commands and URLs.
+  policyFile: /etc/mucki-agent/policy.yaml

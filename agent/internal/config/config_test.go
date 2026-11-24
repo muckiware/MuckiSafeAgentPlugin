@@ -13,9 +13,20 @@ const (
 	secret = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 )
 
+// tempDir is a symlink-free temp directory; macOS hides t.TempDir() behind
+// the /var -> /private/var symlink, which securefs rightly refuses.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "config.yaml")
+	path := filepath.Join(tempDir(t), "config.yaml")
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +55,7 @@ func TestMinimalHTTPSConfigGetsDefaults(t *testing.T) {
 		MaxConcurrency:    1,
 		WakeupDirectory:   "/var/lib/mucki-agent/wakeup",
 		StateDirectory:    "/var/lib/mucki-agent/state",
+		PolicyFile:        "/etc/mucki-agent/policy.yaml",
 	}
 	if cfg.Agent != want {
 		t.Fatalf("agent defaults %+v, want %+v", cfg.Agent, want)
@@ -54,7 +66,11 @@ func TestMinimalHTTPSConfigGetsDefaults(t *testing.T) {
 }
 
 func TestExampleConfigIsValid(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "..", "config.example.yaml"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "config.example.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Parse(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +143,7 @@ func TestAgentValuesAreBounded(t *testing.T) {
 		"agent:\n  heartbeatInterval: 20s\n",
 		"agent:\n  wakeupDirectory: relative/wakeup\n",
 		"agent:\n  stateDirectory: /var/lib/../state\n",
+		"agent:\n  policyFile: policy.yaml\n",
 		"server:\n  requestTimeout: 0s\n",
 	} {
 		body := minimal("https://backup.example.org", "")
@@ -165,7 +182,7 @@ func TestMultipleDocumentsAndOversizedFilesAreRejected(t *testing.T) {
 
 func writeSecret(t *testing.T, content string, mode os.FileMode) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "secret")
+	path := filepath.Join(tempDir(t), "secret")
 	if err := os.WriteFile(path, []byte(content), mode); err != nil {
 		t.Fatal(err)
 	}
@@ -192,14 +209,14 @@ func TestSecretFileMustBeAPrivateRegularFile(t *testing.T) {
 		t.Error("group-readable secret must be rejected")
 	}
 	target := writeSecret(t, secret, 0o600)
-	link := filepath.Join(t.TempDir(), "secret-link")
+	link := filepath.Join(tempDir(t), "secret-link")
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadSecret(link); err == nil {
 		t.Error("symlinked secret must be rejected")
 	}
-	if _, err := LoadSecret(t.TempDir()); err == nil {
+	if _, err := LoadSecret(tempDir(t)); err == nil {
 		t.Error("directory must be rejected")
 	}
 }
@@ -214,5 +231,23 @@ func TestMalformedSecretsNeverLeakIntoErrors(t *testing.T) {
 		if strings.Contains(err.Error(), strings.TrimSpace(content)) || strings.Contains(err.Error(), secret[:16]) {
 			t.Errorf("error leaks secret material: %v", err)
 		}
+	}
+}
+
+func TestConfigFileMustBePrivateAndSymlinkFree(t *testing.T) {
+	path := writeConfig(t, minimal("https://backup.example.org", ""))
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Error("world-readable config must be rejected")
+	}
+	_ = os.Chmod(path, 0o600)
+	link := filepath.Join(filepath.Dir(path), "link.yaml")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(link); err == nil {
+		t.Error("symlinked config must be rejected")
 	}
 }

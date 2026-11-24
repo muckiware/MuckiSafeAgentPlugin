@@ -31,6 +31,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/api"
+	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/securefs"
 )
 
 // State is the persisted execution state of a job.
@@ -139,15 +140,15 @@ func Open(stateDir string) (*Journal, error) {
 		return nil, errors.New("journal: state directory must be a clean absolute path")
 	}
 	uid := os.Geteuid()
-	statefd, err := openVerifiedPath(stateDir, uid)
+	statefd, err := securefs.OpenPrivateDirectory(stateDir)
 	if err != nil {
-		return nil, fmt.Errorf("journal: %w", err)
+		return nil, fmt.Errorf("journal: state directory: %w", err)
 	}
 	defer unix.Close(statefd)
 	if err := unix.Mkdirat(statefd, jobsDirectory, 0o700); err != nil && !errors.Is(err, unix.EEXIST) {
 		return nil, fmt.Errorf("journal: create jobs directory: %w", err)
 	}
-	jobsfd, err := openPrivateDir(statefd, jobsDirectory, uid)
+	jobsfd, err := securefs.OpenPrivateDirectoryAt(statefd, jobsDirectory)
 	if err != nil {
 		return nil, fmt.Errorf("journal: jobs directory: %w", err)
 	}
