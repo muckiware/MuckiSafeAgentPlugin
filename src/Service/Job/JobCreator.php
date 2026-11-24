@@ -59,6 +59,12 @@ final class JobCreator
         }
 
         $phaseDeadline = $phaseDeadline->setTimezone(new \DateTimeZone('UTC'));
+        $phaseDeadline = $phaseDeadline->setTime(
+            (int) $phaseDeadline->format('H'),
+            (int) $phaseDeadline->format('i'),
+            (int) $phaseDeadline->format('s'),
+            0
+        );
         $availableAt = $availableAt->setTimezone(new \DateTimeZone('UTC'));
         $executionDeadline = $phaseDeadline->modify('-15 seconds');
         $stopDeadline = $phaseDeadline->modify('-10 seconds');

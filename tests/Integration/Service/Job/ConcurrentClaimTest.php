@@ -234,6 +234,27 @@ final class ConcurrentClaimTest extends TestCase
         self::assertNull($this->claimer()->claim($this->hostId)->job);
     }
 
+    public function testCreatorPersistsDeadlinesAtTheExactWholeSecondWireBoundary(): void
+    {
+        $future = (new \DateTimeImmutable('+10 minutes', new \DateTimeZone('UTC')))
+            ->setTime(12, 34, 56, 900000);
+        if ($future <= new \DateTimeImmutable('+1 minute', new \DateTimeZone('UTC'))) {
+            $future = $future->modify('+1 day');
+        }
+
+        $jobId = $this->createJob($this->hostId, 'fractional-deadlines', null, $future);
+        $row = $this->connection->fetchAssociative(
+            'SELECT `phase_deadline`, `execution_deadline`, `stop_deadline` '
+            . 'FROM `muwa_agent_job` WHERE `id` = UNHEX(:id)',
+            ['id' => $jobId]
+        );
+
+        self::assertIsArray($row);
+        self::assertSame($future->setTime(12, 34, 56, 0)->format(Defaults::STORAGE_DATE_TIME_FORMAT), $row['phase_deadline']);
+        self::assertSame($future->setTime(12, 34, 41, 0)->format(Defaults::STORAGE_DATE_TIME_FORMAT), $row['execution_deadline']);
+        self::assertSame($future->setTime(12, 34, 46, 0)->format(Defaults::STORAGE_DATE_TIME_FORMAT), $row['stop_deadline']);
+    }
+
     public function testClaimPersistsOnlyTokenHashAndMutatesLeaseFromOneServerTime(): void
     {
         $jobId = $this->createJob($this->hostId, 'lease');
@@ -254,6 +275,32 @@ final class ConcurrentClaimTest extends TestCase
         self::assertNotNull($row['lease_expires_at']);
     }
 
+    public function testInitialClaimPersistsTheExactWholeSecondLeaseEmittedOnTheWire(): void
+    {
+        $serverNow = new \DateTimeImmutable('2030-01-02 03:04:05.900', new \DateTimeZone('UTC'));
+        $jobId = $this->createJob(
+            $this->hostId,
+            'fractional-initial-lease',
+            $serverNow->modify('-1 second'),
+            $serverNow->modify('+10 minutes')
+        );
+        $claim = (new JobClaimer(
+            $this->connection,
+            null,
+            null,
+            static fn (): string => $serverNow->format(Defaults::STORAGE_DATE_TIME_FORMAT)
+        ))->claim($this->hostId)->job;
+
+        self::assertNotNull($claim);
+        $storedLease = $this->connection->fetchOne(
+            'SELECT `lease_expires_at` FROM `muwa_agent_job` WHERE `id` = UNHEX(:id)',
+            ['id' => $jobId]
+        );
+        $wireLease = new \DateTimeImmutable($claim->leaseExpiresAt, new \DateTimeZone('UTC'));
+
+        self::assertSame($wireLease->format(Defaults::STORAGE_DATE_TIME_FORMAT), $storedLease);
+    }
+
     public function testLeaseIsExactlyThirtySecondsAndCappedAtExecutionDeadline(): void
     {
         $longJob = $this->createJob($this->hostId, 'long-lease');
@@ -263,9 +310,14 @@ final class ConcurrentClaimTest extends TestCase
             ['id' => $longJob]
         );
         self::assertIsArray($longRow);
+        $claimedAt = new \DateTimeImmutable((string) $longRow['claimed_at'], new \DateTimeZone('UTC'));
         self::assertSame(
-            (new \DateTimeImmutable((string) $longRow['claimed_at'], new \DateTimeZone('UTC')))
-                ->modify('+30 seconds')->format(Defaults::STORAGE_DATE_TIME_FORMAT),
+            $claimedAt->setTime(
+                (int) $claimedAt->format('H'),
+                (int) $claimedAt->format('i'),
+                (int) $claimedAt->format('s'),
+                0
+            )->modify('+30 seconds')->format(Defaults::STORAGE_DATE_TIME_FORMAT),
             $longRow['lease_expires_at']
         );
 

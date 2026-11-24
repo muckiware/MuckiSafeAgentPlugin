@@ -26,7 +26,8 @@ final class JobClaimer
     public function __construct(
         private readonly Connection $connection,
         private readonly ?\Closure $afterCandidateLocked = null,
-        private readonly ?string $candidateJobId = null
+        private readonly ?string $candidateJobId = null,
+        private readonly ?\Closure $serverNowProvider = null
     ) {
     }
 
@@ -47,7 +48,9 @@ final class JobClaimer
         $this->connection->executeStatement('SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
         $this->connection->beginTransaction();
         try {
-            $serverNow = (string) $this->connection->fetchOne('SELECT UTC_TIMESTAMP(3)');
+            $serverNow = $this->serverNowProvider === null
+                ? (string) $this->connection->fetchOne('SELECT UTC_TIMESTAMP(3)')
+                : (string) ($this->serverNowProvider)();
             $candidateParameters['serverNow'] = $serverNow;
             $host = $this->connection->fetchAssociative(
                 'SELECT `id` FROM `muwa_agent_host` WHERE `id` = UNHEX(:hostId) '
@@ -93,7 +96,9 @@ final class JobClaimer
             $attempt = (int) $row['attempt'] + 1;
             $now = new \DateTimeImmutable($serverNow, new \DateTimeZone('UTC'));
             $executionDeadline = new \DateTimeImmutable((string) $row['execution_deadline'], new \DateTimeZone('UTC'));
-            $leaseExpiresAt = min($now->modify('+' . self::LEASE_SECONDS . ' seconds'), $executionDeadline);
+            $leaseExpiresAt = $this->wireBoundary(
+                min($now->modify('+' . self::LEASE_SECONDS . ' seconds'), $executionDeadline)
+            );
             try {
                 $parameters = json_decode((string) $row['payload'], false, 32, JSON_THROW_ON_ERROR);
             } catch (\JsonException $exception) {
@@ -175,6 +180,18 @@ final class JobClaimer
             "~SQLSTATE\\[23000\\].*\\b1062 Duplicate entry .* for key '(?:muwa_agent_job\\.)?uniq_active_agent'$~D",
             $message
         ) === 1;
+    }
+
+    private function wireBoundary(\DateTimeImmutable $time): \DateTimeImmutable
+    {
+        $utc = $time->setTimezone(new \DateTimeZone('UTC'));
+
+        return $utc->setTime(
+            (int) $utc->format('H'),
+            (int) $utc->format('i'),
+            (int) $utc->format('s'),
+            0
+        );
     }
 
     private function wireTime(\DateTimeImmutable $time): string
