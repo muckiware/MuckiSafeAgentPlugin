@@ -11,15 +11,18 @@
  */
 namespace MuckiSafeAgentPlugin\Controller\Admin;
 
-use MuckiSafeAgentPlugin\Service\Hook\HookConfigurationException;
-use MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator;
-use MuckiSafeAgentPlugin\Service\Hook\RepositoryHookDraft;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
+use MuckiSafeAgentPlugin\Service\Hook\HookConfigurationException;
+use MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator;
+use MuckiSafeAgentPlugin\Service\Hook\RepositoryHookDraft;
 
 /**
  * Thin admin API over RepositoryHookConfigurator. Reading hooks stays on the
@@ -36,9 +39,11 @@ final class RepositoryHookController
         HookConfigurationException::FACILITY_UNAVAILABLE => Response::HTTP_SERVICE_UNAVAILABLE,
     ];
 
-    public function __construct(private readonly RepositoryHookConfigurator $configurator)
-    {
-    }
+    public function __construct(
+        protected LoggerInterface $logger,
+        private readonly RepositoryHookConfigurator $configurator
+    )
+    {}
 
     #[Route(path: '/api/_action/muwa/agent/repository-hook', name: 'api.action.muwa.agent.repository_hook.save', defaults: [PlatformRequest::ATTRIBUTE_ACL => ['muwa_agent.editor']], methods: ['POST'])]
     public function save(Request $request, Context $context): JsonResponse
@@ -64,13 +69,17 @@ final class RepositoryHookController
         try {
             return $this->noStore($operation());
         } catch (HookConfigurationException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             $body = ['error' => $exception->errorCode];
             if ($exception->fields !== []) {
                 $body['fields'] = $exception->fields;
             }
 
             return $this->noStore($body, self::STATUS[$exception->errorCode] ?? Response::HTTP_UNPROCESSABLE_ENTITY);
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }

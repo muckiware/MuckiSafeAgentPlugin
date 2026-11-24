@@ -11,6 +11,7 @@
  */
 namespace MuckiSafeAgentPlugin\Controller\Agent;
 
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorResponses;
 use MuckiSafeAgentPlugin\Service\Auth\AgentProtocol;
@@ -20,6 +21,7 @@ use MuckiSafeAgentPlugin\Service\Job\JobClaimPayloadException;
 use MuckiSafeAgentPlugin\Service\Job\JobClaimRejected;
 use MuckiSafeAgentPlugin\Service\Job\JobClaimRequestDecoder;
 use MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -28,6 +30,7 @@ use Symfony\Component\Routing\Attribute\Route;
 final class JobClaimController
 {
     public function __construct(
+        protected LoggerInterface $logger,
         private readonly JobClaimRequestDecoder $decoder,
         private readonly JobClaimer $claimer
     ) {
@@ -54,8 +57,12 @@ final class JobClaimController
 
             return $response;
         } catch (JobClaimPayloadException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return AgentErrorResponses::forCode($exception->errorCode);
-        } catch (JobClaimRejected) {
+        } catch (JobClaimRejected $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return AgentErrorResponses::forCode(AgentErrorCode::Revoked);
         }
     }

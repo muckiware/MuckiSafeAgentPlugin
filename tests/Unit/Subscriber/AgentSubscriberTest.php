@@ -23,6 +23,7 @@ use MuckiSafeAgentPlugin\Service\Auth\SignatureEnvelope;
 use MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber;
 use MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -93,7 +94,7 @@ final class AgentSubscriberTest extends TestCase
             }
         };
 
-        return new AgentAuthenticationSubscriber($authenticator);
+        return new AgentAuthenticationSubscriber(new NullLogger(), $authenticator);
     }
 
     public function testSubscribedPrioritiesMatchThePlan(): void
@@ -180,7 +181,7 @@ final class AgentSubscriberTest extends TestCase
         $response = new Response('{"serverTime":"now"}', 200, ['CONTENT_TYPE' => 'application/json']);
         $event = new ResponseEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
 
-        (new AgentResponseSigningSubscriber(new ResponseSignature()))->onKernelResponse($event);
+        (new AgentResponseSigningSubscriber(new NullLogger(), new ResponseSignature()))->onKernelResponse($event);
 
         self::assertSame(self::NONCE, $response->headers->get('X-Mucki-Agent-Request-Nonce'));
         self::assertMatchesRegularExpression('/^[0-9]{1,10}$/', (string) $response->headers->get('X-Mucki-Agent-Timestamp'));
@@ -200,7 +201,7 @@ final class AgentSubscriberTest extends TestCase
         $response = new Response('', 401);
         $event = new ResponseEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, $response);
 
-        (new AgentResponseSigningSubscriber(new ResponseSignature()))->onKernelResponse($event);
+        (new AgentResponseSigningSubscriber(new NullLogger(), new ResponseSignature()))->onKernelResponse($event);
 
         self::assertNull($response->headers->get('X-Mucki-Agent-Signature'));
         self::assertNull($response->headers->get('X-Mucki-Agent-Request-Nonce'));
@@ -212,7 +213,7 @@ final class AgentSubscriberTest extends TestCase
         $agent = $this->agentContext();
         $request = $this->agentRequest();
         $request->attributes->set(AgentAuthenticationSubscriber::AUTH_ATTRIBUTE, $agent);
-        $signing = new AgentResponseSigningSubscriber(new ResponseSignature());
+        $signing = new AgentResponseSigningSubscriber(new NullLogger(), new ResponseSignature());
 
         $event = new ExceptionEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, new \RuntimeException('boom'));
         $signing->onKernelException($event);
@@ -241,7 +242,7 @@ final class AgentSubscriberTest extends TestCase
         $request = $this->agentRequest();
         $event = new ExceptionEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, new \RuntimeException('boom'));
 
-        (new AgentResponseSigningSubscriber(new ResponseSignature()))->onKernelException($event);
+        (new AgentResponseSigningSubscriber(new NullLogger(), new ResponseSignature()))->onKernelException($event);
 
         self::assertFalse($event->hasResponse());
     }
@@ -283,7 +284,7 @@ final class AgentSubscriberTest extends TestCase
 
         // emulate the kernel.response pass
         $responseEvent = new ResponseEvent($this->kernel, $request, HttpKernelInterface::MAIN_REQUEST, $errorResponse);
-        (new AgentResponseSigningSubscriber(new ResponseSignature()))->onKernelResponse($responseEvent);
+        (new AgentResponseSigningSubscriber(new NullLogger(), new ResponseSignature()))->onKernelResponse($responseEvent);
 
         $verdict = (new ResponseSignature())->classify(self::SECRET, self::NONCE, self::HEARTBEAT_PATH, $errorResponse);
         self::assertSame(ResponseVerdict::Accept, $verdict);

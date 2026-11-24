@@ -52,10 +52,12 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\RequestSignature"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\AgentAuthenticator"/>
             <tag name="kernel.event_subscriber"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Subscriber\AgentResponseSigningSubscriber">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ResponseSignature"/>
             <tag name="kernel.event_subscriber"/>
         </service>
@@ -113,8 +115,8 @@
             <tag name="shopware.scheduled.task"/>
         </service>
         <service id="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTaskHandler" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="scheduled_task.repository"/>
-            <argument type="service" id="logger"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobReaper"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Auth\ReplayGuard"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\FailureTailPruner"/>
@@ -132,6 +134,7 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\RepositoryHookController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator"/>
             <tag name="controller.service_arguments"/>
         </service>
@@ -143,31 +146,37 @@
             <argument type="service" id="Doctrine\DBAL\Connection"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Agent\HostHeartbeatController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeatRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Heartbeat\HostHeartbeat"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobClaimController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobClaimer"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobStartController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobStarter"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobHeartbeatController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobHeartbeat"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Agent\JobCompleteController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCompleteRequestDecoder"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCompletion"/>
             <tag name="controller.service_arguments"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\AgentProvisionController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor"/>

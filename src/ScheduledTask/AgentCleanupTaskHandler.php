@@ -11,13 +11,15 @@
  */
 namespace MuckiSafeAgentPlugin\ScheduledTask;
 
+use Psr\Log\LoggerInterface;
+use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
+use Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTaskHandler;
+
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Auth\ReplayGuard;
 use MuckiSafeAgentPlugin\Service\Job\FailureTailPruner;
 use MuckiSafeAgentPlugin\Service\Job\JobReaper;
 use MuckiSafeAgentPlugin\Service\Wakeup\WakeupCleaner;
-use Psr\Log\LoggerInterface;
-use Shopware\Core\Framework\DataAbstractionLayer\EntityRepository;
-use Shopware\Core\Framework\MessageQueue\ScheduledTask\ScheduledTaskHandler;
 
 /**
  * Reaps expired leases and deadlines first, then removes stale state in
@@ -30,8 +32,8 @@ final class AgentCleanupTaskHandler extends ScheduledTaskHandler
     private const NONCE_MAX_BATCHES = 100;
 
     public function __construct(
-        EntityRepository $scheduledTaskRepository,
         private readonly LoggerInterface $logger,
+        EntityRepository $scheduledTaskRepository,
         private readonly JobReaper $reaper,
         private readonly ReplayGuard $replayGuard,
         private readonly FailureTailPruner $tailPruner,
@@ -50,7 +52,7 @@ final class AgentCleanupTaskHandler extends ScheduledTaskHandler
         if ($reaped->total() + $nonces + $tails + $wakeups === 0) {
             return;
         }
-        $this->logger->info('MuckiSafe agent cleanup finished.', [
+        $this->logger->info('MuckiSafe agent cleanup finished.'.print_r([
             'requeued' => $reaped->requeued,
             'expired' => $reaped->expired,
             'unknown' => $reaped->unknown,
@@ -59,7 +61,8 @@ final class AgentCleanupTaskHandler extends ScheduledTaskHandler
             'nonces' => $nonces,
             'tails' => $tails,
             'wakeups' => $wakeups,
-        ]);
+        ], true), PluginDefaults::DEFAULT_LOGGER_CONFIG);
+
     }
 
     private function cleanupNonces(): int

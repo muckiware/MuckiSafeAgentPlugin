@@ -12,12 +12,14 @@
 
 namespace MuckiSafeAgentPlugin\Subscriber;
 
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Auth\AgentAuthException;
 use MuckiSafeAgentPlugin\Service\Auth\AgentAuthenticatorInterface;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorResponses;
 use MuckiSafeAgentPlugin\Service\Auth\AgentProtocol;
 use MuckiSafeAgentPlugin\Service\Auth\AuthenticatedRequest;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -33,8 +35,10 @@ final class AgentAuthenticationSubscriber implements EventSubscriberInterface
 {
     public const AUTH_ATTRIBUTE='muwa_agent_authenticated';
 
-    public function __construct(private readonly AgentAuthenticatorInterface $authenticator)
-    {
+    public function __construct(
+        protected LoggerInterface $logger,
+        private readonly AgentAuthenticatorInterface $authenticator
+    ) {
     }
 
     /**
@@ -58,6 +62,8 @@ final class AgentAuthenticationSubscriber implements EventSubscriberInterface
         try {
             $authenticated = $this->authenticator->authenticate($request);
         } catch (AgentAuthException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             $agent = $exception->agent;
             if ($agent === null) {
                 $event->setResponse(new Response('', Response::HTTP_UNAUTHORIZED, ['Cache-Control' => 'no-store']));

@@ -17,6 +17,7 @@ use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
 use MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -50,6 +51,7 @@ final class AgentProvisionControllerTest extends TestCase
             'secret' => str_repeat('c', 43),
         ]);
         $controller = new AgentProvisionController(
+            new NullLogger(),
             $provisioner,
             $this->createMock(AgentSecretRotator::class),
             $this->createMock(MasterKeyReencryptor::class)
@@ -79,6 +81,7 @@ final class AgentProvisionControllerTest extends TestCase
         $provisioner = $this->createMock(AgentProvisioner::class);
         $provisioner->expects(self::never())->method('provision');
         $controller = new AgentProvisionController(
+            new NullLogger(),
             $provisioner,
             $this->createMock(AgentSecretRotator::class),
             $this->createMock(MasterKeyReencryptor::class)
@@ -111,6 +114,7 @@ final class AgentProvisionControllerTest extends TestCase
         $reencryptor = $this->createMock(MasterKeyReencryptor::class);
         $reencryptor->expects(self::never())->method('reencryptBatch');
         $controller = new AgentProvisionController(
+            new NullLogger(),
             $this->createMock(AgentProvisioner::class),
             $this->createMock(AgentSecretRotator::class),
             $reencryptor
@@ -128,6 +132,7 @@ final class AgentProvisionControllerTest extends TestCase
         $provisioner = $this->createMock(AgentProvisioner::class);
         $provisioner->method('provision')->willThrowException(new \RuntimeException('secret=LEAK key=LEAK'));
         $controller = new AgentProvisionController(
+            new NullLogger(),
             $provisioner,
             $this->createMock(AgentSecretRotator::class),
             $this->createMock(MasterKeyReencryptor::class)

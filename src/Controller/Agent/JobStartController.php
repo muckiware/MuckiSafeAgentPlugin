@@ -11,6 +11,7 @@
  */
 namespace MuckiSafeAgentPlugin\Controller\Agent;
 
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorResponses;
 use MuckiSafeAgentPlugin\Service\Auth\AgentProtocol;
@@ -20,6 +21,7 @@ use MuckiSafeAgentPlugin\Service\Job\JobLeasePayloadException;
 use MuckiSafeAgentPlugin\Service\Job\JobLeaseRequestDecoder;
 use MuckiSafeAgentPlugin\Service\Job\JobStarter;
 use MuckiSafeAgentPlugin\Subscriber\AgentAuthenticationSubscriber;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
@@ -28,6 +30,7 @@ use Symfony\Component\Routing\Attribute\Route;
 final class JobStartController
 {
     public function __construct(
+        protected LoggerInterface $logger,
         private readonly JobLeaseRequestDecoder $decoder,
         private readonly JobStarter $starter
     ) {
@@ -51,8 +54,12 @@ final class JobStartController
             $payload = $this->decoder->decodeStart($authenticated->rawBody);
             return new JsonResponse($this->starter->start($authenticated->hostId, $jobId, $payload)->toArray());
         } catch (JobLeasePayloadException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return AgentErrorResponses::forCode($exception->errorCode);
-        } catch (ClaimConflict) {
+        } catch (ClaimConflict $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return AgentErrorResponses::forCode(AgentErrorCode::ClaimConflict);
         }
     }

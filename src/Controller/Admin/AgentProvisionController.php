@@ -11,19 +11,23 @@
  */
 namespace MuckiSafeAgentPlugin\Controller\Admin;
 
-use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
-use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
-use MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor;
+use Psr\Log\LoggerInterface;
 use Shopware\Core\PlatformRequest;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
+use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
+use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
+use MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor;
+
 #[Route(defaults: ['_routeScope' => ['administration']])]
 final class AgentProvisionController
 {
     public function __construct(
+        protected LoggerInterface $logger,
         private readonly AgentProvisioner $provisioner,
         private readonly AgentSecretRotator $rotator,
         private readonly MasterKeyReencryptor $reencryptor
@@ -40,8 +44,12 @@ final class AgentProvisionController
             }
             return $this->noStore($this->provisioner->provision($payload['name']));
         } catch (\InvalidArgumentException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -52,8 +60,12 @@ final class AgentProvisionController
         try {
             return $this->noStore($this->rotator->rotate($id));
         } catch (\InvalidArgumentException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -65,8 +77,12 @@ final class AgentProvisionController
             $this->rotator->revoke($id);
             return $this->noStore(['revoked' => true]);
         } catch (\InvalidArgumentException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -91,8 +107,12 @@ final class AgentProvisionController
                 $batchSize
             ));
         } catch (\InvalidArgumentException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
         } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
@@ -103,6 +123,8 @@ final class AgentProvisionController
         try {
             $payload = $request->toArray();
         } catch (\Throwable $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             throw new \InvalidArgumentException('Invalid request.', 0, $exception);
         }
         if (array_is_list($payload) && $payload !== []) {

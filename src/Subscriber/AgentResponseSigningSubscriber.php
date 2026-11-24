@@ -12,6 +12,7 @@
 
 namespace MuckiSafeAgentPlugin\Subscriber;
 
+use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Exception\SignatureException;
 use MuckiSafeAgentPlugin\Service\Auth\AgentAuthException;
 use MuckiSafeAgentPlugin\Service\Auth\AgentErrorCode;
@@ -19,6 +20,7 @@ use MuckiSafeAgentPlugin\Service\Auth\AgentErrorResponses;
 use MuckiSafeAgentPlugin\Service\Auth\AuthenticatedRequest;
 use MuckiSafeAgentPlugin\Service\Auth\ResponseSignature;
 use MuckiSafeAgentPlugin\Service\Auth\SignatureEnvelope;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ExceptionEvent;
@@ -34,8 +36,10 @@ use Symfony\Component\HttpKernel\Event\ResponseEvent;
  */
 final class AgentResponseSigningSubscriber implements EventSubscriberInterface
 {
-    public function __construct(private readonly ResponseSignature $responseSignature)
-    {
+    public function __construct(
+        protected LoggerInterface $logger,
+        private readonly ResponseSignature $responseSignature
+    ) {
     }
 
     /**
@@ -76,6 +80,7 @@ final class AgentResponseSigningSubscriber implements EventSubscriberInterface
         }
 
         $throwable = $event->getThrowable();
+        $this->logger->error($throwable->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
         $code = $throwable instanceof AgentAuthException && $throwable->errorCode !== null
             ? $throwable->errorCode
             : AgentErrorCode::InternalError;
@@ -94,7 +99,9 @@ final class AgentResponseSigningSubscriber implements EventSubscriberInterface
             foreach ($this->responseSignature->headers($agent->secret, $response->getStatusCode(), $envelope) as $name => $value) {
                 $response->headers->set($name, $value);
             }
-        } catch (SignatureException) {
+        } catch (SignatureException $exception) {
+
+            $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             // no canonical request nonce or path: a verifiable signature is
             // impossible — leave the response unsigned and let the agent
             // reject it fail-closed
