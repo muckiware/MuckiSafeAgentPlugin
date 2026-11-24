@@ -27,9 +27,13 @@ func TestResponseDTOsAgreeWithTheSharedFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	targets := map[string]func() any{
-		"heartbeat-response": func() any { return &HostHeartbeatResponse{} },
-		"claim-response":     func() any { return &ClaimResponse{} },
-		"error-response":     func() any { return &errorResponse{} },
+		"heartbeat-response":     func() any { return &HostHeartbeatResponse{} },
+		"claim-response":         func() any { return &ClaimResponse{} },
+		"error-response":         func() any { return &errorResponse{} },
+		"job-start-response":     func() any { return &JobStartResponse{} },
+		"job-heartbeat-response": func() any { return &JobHeartbeatResponse{} },
+		"job-complete-response":  func() any { return &JobCompleteResponse{} },
+		"job-complete-request":   func() any { return &JobCompleteRequest{} },
 	}
 	seen := map[string]int{}
 	for _, c := range fixture.Cases {

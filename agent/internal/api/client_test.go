@@ -363,10 +363,10 @@ func TestOversizedRequestsAndForeignPathsAreRejectedLocally(t *testing.T) {
 	client := newClient(t, server, ClientOptions{})
 
 	var out struct{}
-	if err := client.Post(context.Background(), RoutePrefix+"/jobs/claim", map[string]string{"pad": strings.Repeat("x", 2000)}, &out); !errors.Is(err, ErrBodyTooLarge) {
+	if _, err := client.Post(context.Background(), RoutePrefix+"/jobs/claim", map[string]string{"pad": strings.Repeat("x", 2000)}, &out); !errors.Is(err, ErrBodyTooLarge) {
 		t.Fatalf("expected local body limit, got %v", err)
 	}
-	if err := client.Post(context.Background(), RoutePrefix+"/jobs/claim?x=1", struct{}{}, &out); !errors.Is(err, ErrInvalidPath) {
+	if _, err := client.Post(context.Background(), RoutePrefix+"/jobs/claim?x=1", struct{}{}, &out); !errors.Is(err, ErrInvalidPath) {
 		t.Fatalf("expected path rejection, got %v", err)
 	}
 }
@@ -381,6 +381,95 @@ func TestCredentialsNeverAppearInErrorsOrLogs(t *testing.T) {
 	for _, text := range []string{err.Error(), logs.String()} {
 		if strings.Contains(text, testSecret) || strings.Contains(text, "0001020304050607") {
 			t.Fatalf("secret material leaked: %s", text)
+		}
+	}
+}
+
+const testJob = "0190c3a4-5b6e-7f80-9a1b-2c3d4e5f6a7b"
+const testToken = "Tx3IBqFEOrmbYYXG-3ry1Cq-8GW8waH3hgKndGrL-dw"
+
+func TestJobRoutesAreSignedAgainstTheConcreteJobPath(t *testing.T) {
+	var paths []string
+	fake := &fakeServer{t: t, key: testKey(t), respond: func(r *http.Request, body []byte) (int, []byte, bool) {
+		paths = append(paths, r.URL.Path)
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/start"):
+			if string(body) != `{"claimToken":"`+testToken+`","leaseVersion":3}` {
+				t.Errorf("start body %s", body)
+			}
+			return 200, []byte(`{"leaseVersion":3,"leaseExpiresAt":"2030-03-17T17:47:10Z","phaseDeadline":"2030-03-17T17:56:40Z","executionDeadline":"2030-03-17T17:56:25Z","stopDeadline":"2030-03-17T17:56:30Z"}`), true
+		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
+			return 200, []byte(`{"leaseVersion":3,"leaseExpiresAt":"2030-03-17T17:47:10Z","stopRequested":true,"stopDeadline":"2030-03-17T17:46:45Z"}`), true
+		default:
+			if string(body) != `{"claimToken":"`+testToken+`","leaseVersion":3,"outcome":"failed","resultCode":"step_failed","summary":"s","stderrTail":"e","stderrEncoding":"utf-8"}` {
+				t.Errorf("complete body %s", body)
+			}
+			return 200, []byte(`{"accepted":true,"terminalStatus":"failed"}`), true
+		}
+	}}
+	server := httptest.NewTLSServer(fake)
+	defer server.Close()
+	client := newClient(t, server, ClientOptions{})
+	lease := JobLeaseRequest{ClaimToken: testToken, LeaseVersion: 3}
+
+	started, meta, err := client.StartJob(context.Background(), testJob, lease)
+	if err != nil || started.ExecutionDeadline != "2030-03-17T17:56:25Z" || !meta.ServerTime.Equal(time.Unix(testNow, 0)) {
+		t.Fatalf("start: %+v %+v %v", started, meta, err)
+	}
+	beat, _, err := client.JobHeartbeat(context.Background(), testJob, lease)
+	if err != nil || !beat.StopRequested || beat.StopDeadline != "2030-03-17T17:46:45Z" {
+		t.Fatalf("heartbeat: %+v %v", beat, err)
+	}
+	stderr, encoding := "e", "utf-8"
+	done, err := client.CompleteJob(context.Background(), testJob, JobCompleteRequest{JobLeaseRequest: lease, CompletionResult: CompletionResult{
+		Outcome: "failed", ResultCode: "step_failed", Summary: "s", StderrTail: &stderr, StderrEncoding: &encoding,
+	}})
+	if err != nil || !done.Accepted || done.TerminalStatus != "failed" {
+		t.Fatalf("complete: %+v %v", done, err)
+	}
+	want := []string{RoutePrefix + "/jobs/" + testJob + "/start", RoutePrefix + "/jobs/" + testJob + "/heartbeat", RoutePrefix + "/jobs/" + testJob + "/complete"}
+	if strings.Join(paths, ",") != strings.Join(want, ",") {
+		t.Fatalf("paths %v", paths)
+	}
+}
+
+func TestJobRoutesRejectForeignJobIDsLocally(t *testing.T) {
+	server := httptest.NewTLSServer(&fakeServer{t: t, key: testKey(t), respond: signedJSON(200, `{}`)})
+	defer server.Close()
+	client := newClient(t, server, ClientOptions{})
+	for _, id := range []string{"../claim", strings.ToUpper(testJob), "0190c3a45b6e7f809a1b2c3d4e5f6a7b"} {
+		if _, _, err := client.StartJob(context.Background(), id, JobLeaseRequest{ClaimToken: testToken, LeaseVersion: 1}); !errors.Is(err, ErrInvalidPath) {
+			t.Errorf("%q: expected path rejection, got %v", id, err)
+		}
+	}
+}
+
+func TestCompletionResultFollowsTheOutcomeMatrix(t *testing.T) {
+	tail, utf8, b64 := "x", "utf-8", "base64"
+	valid := []CompletionResult{
+		{Outcome: "succeeded", ResultCode: "ok", Summary: "done"},
+		{Outcome: "ambiguous", ResultCode: "journal_started", Summary: ""},
+		{Outcome: "failed", ResultCode: "step_failed", Summary: "x", StdoutTail: &tail, StdoutEncoding: &utf8},
+		{Outcome: "timed_out", ResultCode: "deadline", Summary: strings.Repeat("ä", 4096), StderrTail: &tail, StderrEncoding: &b64},
+	}
+	for _, r := range valid {
+		if err := r.Validate(); err != nil {
+			t.Errorf("%+v: %v", r.Outcome, err)
+		}
+	}
+	invalid := []CompletionResult{
+		{Outcome: "unknown", ResultCode: "ok"},
+		{Outcome: "succeeded", ResultCode: "OK"},
+		{Outcome: "succeeded", ResultCode: "ok", Summary: strings.Repeat("x", 4097)},
+		{Outcome: "succeeded", ResultCode: "ok", Summary: "\xff"},
+		{Outcome: "succeeded", ResultCode: "ok", StdoutTail: &tail, StdoutEncoding: &utf8},
+		{Outcome: "ambiguous", ResultCode: "x", StderrTail: &tail, StderrEncoding: &utf8},
+		{Outcome: "failed", ResultCode: "x", StdoutTail: &tail},
+		{Outcome: "failed", ResultCode: "x", StdoutEncoding: &utf8},
+	}
+	for i, r := range invalid {
+		if err := r.Validate(); err == nil {
+			t.Errorf("invalid case %d accepted", i)
 		}
 	}
 }

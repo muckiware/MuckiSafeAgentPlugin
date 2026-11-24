@@ -99,43 +99,55 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}, nil
 }
 
+// ResponseMeta describes a verified response. ServerTime is the signed
+// response timestamp, used to calibrate local deadlines against the server.
+type ResponseMeta struct {
+	ServerTime time.Time
+}
+
 // Post sends request as JSON to the exact route path and decodes a verified
 // 2xx body strictly into response. Signed error answers become *APIError.
-func (c *Client) Post(ctx context.Context, path string, request, response any) error {
+func (c *Client) Post(ctx context.Context, path string, request, response any) (ResponseMeta, error) {
 	route, err := MatchRoute(path)
 	if err != nil {
-		return err
+		return ResponseMeta{}, err
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("agent api: encode request: %w", err)
+		return ResponseMeta{}, fmt.Errorf("agent api: encode request: %w", err)
 	}
 	if err := CheckBodyLimit(route.Name, len(body)); err != nil {
-		return err
+		return ResponseMeta{}, err
 	}
 	httpRequest, nonce, err := c.signedRequest(ctx, path, body)
 	if err != nil {
-		return err
+		return ResponseMeta{}, err
 	}
 	httpResponse, err := c.http.Do(httpRequest)
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return &TransportError{Err: err}
+		return ResponseMeta{}, transportError(ctx, err)
 	}
 	defer httpResponse.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(httpResponse.Body, TransportHardCapBytes+1))
 	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return &TransportError{Err: err}
+		return ResponseMeta{}, transportError(ctx, err)
 	}
 	if len(raw) > TransportHardCapBytes {
-		return &UntrustedResponseError{Status: httpResponse.StatusCode}
+		return ResponseMeta{}, &UntrustedResponseError{Status: httpResponse.StatusCode}
 	}
-	return c.interpret(path, nonce, httpResponse, raw, response)
+	if err := c.interpret(path, nonce, httpResponse, raw, response); err != nil {
+		return ResponseMeta{}, err
+	}
+	// VerifyResponse already accepted the canonical timestamp header.
+	seconds, _ := strconv.ParseInt(httpResponse.Header.Get(HeaderTimestamp), 10, 64)
+	return ResponseMeta{ServerTime: time.Unix(seconds, 0).UTC()}, nil
+}
+
+func transportError(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return &TransportError{Err: err}
 }
 
 func (c *Client) signedRequest(ctx context.Context, path string, body []byte) (*http.Request, string, error) {
@@ -189,15 +201,44 @@ func (c *Client) interpret(path, nonce string, httpResponse *http.Response, raw 
 // HostHeartbeat reports the agent to the control plane.
 func (c *Client) HostHeartbeat(ctx context.Context, request HostHeartbeatRequest) (HostHeartbeatResponse, error) {
 	var response HostHeartbeatResponse
-	err := c.Post(ctx, RoutePrefix+"/heartbeat", request, &response)
+	_, err := c.Post(ctx, RoutePrefix+"/heartbeat", request, &response)
 	return response, err
 }
 
 // Claim asks for at most one job targeted at this agent.
 func (c *Client) Claim(ctx context.Context) (ClaimResponse, error) {
 	var response ClaimResponse
-	err := c.Post(ctx, RoutePrefix+"/jobs/claim", ClaimRequest{MaxJobs: 1}, &response)
+	_, err := c.Post(ctx, RoutePrefix+"/jobs/claim", ClaimRequest{MaxJobs: 1}, &response)
 	return response, err
+}
+
+// StartJob moves a claimed job to running and returns its materialized deadlines.
+func (c *Client) StartJob(ctx context.Context, jobID string, lease JobLeaseRequest) (JobStartResponse, ResponseMeta, error) {
+	var response JobStartResponse
+	meta, err := c.Post(ctx, jobPath(jobID, "start"), lease, &response)
+	return response, meta, err
+}
+
+// JobHeartbeat renews the lease of a running job or reports a requested stop.
+func (c *Client) JobHeartbeat(ctx context.Context, jobID string, lease JobLeaseRequest) (JobHeartbeatResponse, ResponseMeta, error) {
+	var response JobHeartbeatResponse
+	meta, err := c.Post(ctx, jobPath(jobID, "heartbeat"), lease, &response)
+	return response, meta, err
+}
+
+// CompleteJob reports the terminal outcome; an identical retry is answered again.
+func (c *Client) CompleteJob(ctx context.Context, jobID string, request JobCompleteRequest) (JobCompleteResponse, error) {
+	if err := request.CompletionResult.Validate(); err != nil {
+		return JobCompleteResponse{}, err
+	}
+	var response JobCompleteResponse
+	_, err := c.Post(ctx, jobPath(jobID, "complete"), request, &response)
+	return response, err
+}
+
+// jobPath builds the route path; MatchRoute in Post rejects any non-canonical job id.
+func jobPath(jobID, action string) string {
+	return RoutePrefix + "/jobs/" + jobID + "/" + action
 }
 
 // validator is implemented by response DTOs with semantic checks beyond
@@ -206,9 +247,26 @@ type validator interface {
 	validate() error
 }
 
+// requirer lists members that must be present and not null; encoding/json
+// silently keeps the zero value for both cases.
+type requirer interface {
+	required() []string
+}
+
 // decodeStrict accepts exactly one JSON value without unknown members and
 // then applies the DTO's own validation.
 func decodeStrict(raw []byte, target any) error {
+	if r, ok := target.(requirer); ok {
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &members); err != nil {
+			return err
+		}
+		for _, name := range r.required() {
+			if value, ok := members[name]; !ok || string(value) == "null" {
+				return fmt.Errorf("member %s is required", name)
+			}
+		}
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
@@ -235,6 +293,8 @@ type errorResponse struct {
 	Message string    `json:"message"`
 	TraceID string    `json:"traceId"`
 }
+
+func (e *errorResponse) required() []string { return []string{"code", "message", "traceId"} }
 
 func (e *errorResponse) validate() error {
 	if !errorCodePattern.MatchString(string(e.Code)) || len(e.Message) > 1024 || !uuidRegexp.MatchString(e.TraceID) {
