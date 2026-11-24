@@ -22,8 +22,8 @@
 #                            intentionally ships no version field)
 #
 # Usage (matrix values from the implementation plan):
-#   tests/Integration/run-shopware.sh --shopware v6.6.10.25 --mysql 8.0
-#   tests/Integration/run-shopware.sh --shopware v6.7.14.1 --mysql 8.4
+#   tests/Integration/run-shopware.sh --shopware v6.6.10.32 --mysql 8.0
+#   tests/Integration/run-shopware.sh --shopware v6.7.16.1 --mysql 8.4
 #
 # Execution environments:
 #   * native:  php + composer on PATH (CI runner) → inner phase runs locally
@@ -34,7 +34,7 @@
 #
 set -euo pipefail
 
-readonly DEFAULT_SHOPWARE_TAG="v6.7.14.1"
+readonly DEFAULT_SHOPWARE_TAG="v6.7.16.1"
 readonly DEFAULT_MYSQL_VERSION="8.4"
 readonly DEFAULT_WORKSPACE="/tmp/muwa-integration"
 readonly DEFAULT_FACILITY_REF="v0.11.0"
@@ -131,6 +131,9 @@ run_inner() {
     cd "$shop_dir"
     if [ "$FRESH" = "1" ] || [ ! -d vendor/shopware ] || [ ! -f composer.lock ]; then
         log "composer install (shopware root)"
+        # Temporary, identical to the CI workflow: shopware/conflicts excludes
+        # current twig releases and every still allowed one has advisories.
+        composer config --json policy.advisories.ignore '["twig/twig"]'
         composer install --no-dev --no-interaction --no-progress
     fi
 

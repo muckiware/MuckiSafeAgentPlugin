@@ -69,8 +69,8 @@ DAL, migration, route and boot tests run **only** inside an installed
 Shopware instance. The harness provisions it reproducibly:
 
 ```bash
-tests/Integration/run-shopware.sh --shopware v6.6.10.25 --mysql 8.0
-tests/Integration/run-shopware.sh --shopware v6.7.14.1 --mysql 8.4
+tests/Integration/run-shopware.sh --shopware v6.6.10.32 --mysql 8.0
+tests/Integration/run-shopware.sh --shopware v6.7.16.1 --mysql 8.4
 ```
 
 It starts MySQL 8.0/8.4, checks out `shopware/production` at the supported

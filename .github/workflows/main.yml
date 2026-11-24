@@ -33,7 +33,7 @@ jobs:
       matrix:
         php-versions: [ '8.4', '8.5' ]
         mysql-versions: [ '8.0', '8.4' ]
-        shopware-versions: [ 'v6.6.10.25', 'v6.7.14.1' ]
+        shopware-versions: [ 'v6.6.10.32', 'v6.7.16.1' ]
     services:
       mysql:
         image: mysql:${{ matrix.mysql-versions }}
@@ -100,6 +100,11 @@ jobs:
         # Install Shopware with --no-dev to prevent that dev-tools of the module got in conflict with the tools of shopware
         run: |
           composer req shopware/administration:${{ matrix.shopware-versions }} shopware/core:${{ matrix.shopware-versions }} shopware/elasticsearch:${{ matrix.shopware-versions }} shopware/storefront:${{ matrix.shopware-versions }} --no-update
+          # Temporary: the shopware/conflicts metadata of shopware.github.io/conflicts excludes
+          # current twig releases, while every still allowed twig release has security
+          # advisories, so 6.7 is not installable otherwise. CI-only and kept in sync with
+          # tests/Integration/run-shopware.sh. Remove once Shopware publishes fixed conflicts.
+          composer config --json policy.advisories.ignore '["twig/twig"]'
           composer install --no-dev
 
       - name: "Install plugins"
