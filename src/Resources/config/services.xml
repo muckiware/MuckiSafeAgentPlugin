@@ -111,6 +111,10 @@
         <service id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupCleaner" public="true">
             <argument>%muwa_agent.wakeup_directory%</argument>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupWriter" public="true">
+            <argument>%muwa_agent.wakeup_directory%</argument>
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\ScheduledTask\AgentCleanupTask">
             <tag name="shopware.scheduled.task"/>
         </service>
@@ -142,6 +146,7 @@
             <argument type="service" id="Doctrine\DBAL\Connection"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobCreator"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobWaiter"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Wakeup\WakeupWriter"/>
         </service>
         <service id="MuckiSafeAgentPlugin\Service\Hook\BackupRunCoordinator" public="true">
             <argument type="service" id="Psr\Log\LoggerInterface"/>

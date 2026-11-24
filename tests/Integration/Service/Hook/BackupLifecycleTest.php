@@ -31,6 +31,7 @@ use MuckiSafeAgentPlugin\Service\Job\JobReaper;
 use MuckiSafeAgentPlugin\Service\Job\JobTransitionGuard;
 use MuckiSafeAgentPlugin\Service\Job\JobWaiter;
 use MuckiSafeAgentPlugin\Service\Job\OutputTailNormalizer;
+use MuckiSafeAgentPlugin\Service\Wakeup\WakeupWriter;
 use MuckiSafeAgentPlugin\Subscriber\FacilityBackupAfterSubscriber;
 use MuckiSafeAgentPlugin\Subscriber\FacilityBackupBeforeSubscriber;
 use MuckiSafeAgentPlugin\Subscriber\FacilityBackupFinishedSubscriber;
@@ -66,6 +67,9 @@ final class BackupLifecycleTest extends TestCase
     private array $claimsPerPhase = [];
     /** @var list<string> */
     private array $facilityRepositoryIds = [];
+    private string $wakeupDirectory;
+    /** @var list<array{jobId: string, wakeup: bool, transactionLevel: int}> what the agent saw per queued job */
+    private array $wakeupObservations = [];
 
     protected function setUp(): void
     {
@@ -79,6 +83,8 @@ final class BackupLifecycleTest extends TestCase
         $this->repositoryId = $this->insertFacilityRepository('none', 'none');
         $this->hostId = $this->insertHost();
         $this->actionId = $this->insertAction('safe');
+        $this->wakeupDirectory = sys_get_temp_dir() . '/muwa-lifecycle-wakeup-' . bin2hex(random_bytes(6));
+        mkdir($this->wakeupDirectory, 0700);
     }
 
     protected function tearDown(): void
@@ -87,6 +93,12 @@ final class BackupLifecycleTest extends TestCase
             $this->connection->executeStatement('DELETE FROM `muwa_backup_repository` WHERE `id` = UNHEX(:id)', ['id' => $id]);
         }
         $this->dropSchema();
+        foreach (glob($this->wakeupDirectory . '/*') ?: [] as $file) {
+            unlink($file);
+        }
+        if (is_dir($this->wakeupDirectory)) {
+            rmdir($this->wakeupDirectory);
+        }
     }
 
     public function testSuccessfulBackupRunsPrePostAndFinallyOnOneRun(): void
@@ -386,6 +398,89 @@ final class BackupLifecycleTest extends TestCase
         ));
     }
 
+    public function testEveryCreatedJobIsSignalledOnlyAfterItsCommit(): void
+    {
+        $this->configureHooks(['pre' => 60, 'post' => 60, 'finally' => 60]);
+        $this->agentModes = ['pre' => 'succeed', 'post' => 'succeed', 'finally' => 'succeed'];
+        $level = $this->connection->getTransactionNestingLevel();
+
+        $this->coordinator()->before($this->repositoryId);
+        $this->coordinator()->after($this->repositoryId);
+        $this->coordinator()->finished($this->repositoryId, null);
+
+        self::assertCount(3, $this->wakeupObservations);
+        foreach ($this->wakeupObservations as $observation) {
+            self::assertTrue($observation['wakeup'], 'queued job ' . $observation['jobId'] . ' has no wakeup');
+            self::assertSame($level, $observation['transactionLevel']);
+        }
+        $jobIds = $this->connection->fetchFirstColumn('SELECT LOWER(HEX(`id`)) FROM `muwa_agent_job`');
+        self::assertCount(3, glob($this->wakeupDirectory . '/*.ready') ?: []);
+        foreach ($jobIds as $jobId) {
+            self::assertFileExists($this->wakeupPath((string) $jobId));
+        }
+        self::assertSame([], glob($this->wakeupDirectory . '/*.tmp') ?: []);
+    }
+
+    public function testJobThatIsNotCreatedIsNeverSignalled(): void
+    {
+        $this->configureHooks(['pre' => 60]);
+        $this->connection->executeStatement('UPDATE `muwa_agent_host` SET `enabled` = 0');
+
+        $this->expectHookFailure(fn () => $this->coordinator()->before($this->repositoryId));
+
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `muwa_agent_job`'));
+        self::assertSame([], array_values(array_diff(scandir($this->wakeupDirectory) ?: [], ['.', '..'])));
+    }
+
+    public function testWakeupWriterFailureKeepsTheCommittedJobAndPollingDeliversIt(): void
+    {
+        $this->configureHooks(['pre' => 60]);
+        $this->agentModes = ['pre' => 'succeed'];
+        rmdir($this->wakeupDirectory);
+
+        $this->coordinator()->before($this->repositoryId);
+
+        self::assertSame(['pre' => 'succeeded'], $this->jobStatuses());
+        self::assertFalse($this->wakeupObservations[0]['wakeup']);
+    }
+
+    public function testCrashAfterCommitButBeforeTheWakeupLosesNoJob(): void
+    {
+        $runId = Uuid::randomHex();
+        $this->connection->insert('muwa_agent_backup_run', [
+            'id' => Uuid::fromHexToBytes($runId),
+            'facility_repository_id' => Uuid::fromHexToBytes($this->repositoryId),
+            'source' => 'facility',
+            'idempotency_key' => Uuid::randomHex(),
+            'status' => 'running',
+            'started_at' => $this->storage($this->now),
+            'created_at' => $this->storage($this->now),
+        ]);
+        // the process dies right after JobCreator committed: no WakeupWriter call happens
+        $jobId = $this->container(JobCreator::class)->create(
+            $runId,
+            $this->actionId,
+            $this->repositoryId,
+            $this->hostId,
+            'pre',
+            $this->now,
+            $this->now->modify('+60 seconds'),
+            1,
+            $runId . ':pre'
+        );
+
+        self::assertFileDoesNotExist($this->wakeupPath($jobId));
+        $job = $this->claimer()->claim($this->hostId)->job;
+        self::assertNotNull($job);
+        self::assertSame($jobId, str_replace('-', '', $job->id));
+    }
+
+    private function wakeupPath(string $hexJobId): string
+    {
+        return $this->wakeupDirectory . '/' . substr($hexJobId, 0, 8) . '-' . substr($hexJobId, 8, 4) . '-'
+            . substr($hexJobId, 12, 4) . '-' . substr($hexJobId, 16, 4) . '-' . substr($hexJobId, 20, 12) . '.ready';
+    }
+
     private function coordinator(): BackupRunCoordinator
     {
         $clock = fn (): \DateTimeImmutable => $this->now;
@@ -404,6 +499,7 @@ final class BackupLifecycleTest extends TestCase
             $this->connection,
             $this->container(JobCreator::class),
             $waiter,
+            new WakeupWriter($this->wakeupDirectory, new NullLogger()),
             $clock
         );
 
@@ -420,11 +516,16 @@ final class BackupLifecycleTest extends TestCase
     private function agentTick(): void
     {
         if ($this->claimed === null) {
-            $queuedPhase = $this->connection->fetchOne(
-                'SELECT `phase` FROM `muwa_agent_job` WHERE `target_agent_id` = UNHEX(:host) AND `status` = \'queued\'',
+            $queued = $this->connection->fetchAssociative(
+                'SELECT `phase`, LOWER(HEX(`id`)) AS `id` FROM `muwa_agent_job` '
+                . 'WHERE `target_agent_id` = UNHEX(:host) AND `status` = \'queued\'',
                 ['host' => $this->hostId]
             );
-            if (!is_string($queuedPhase) || ($this->agentModes[$queuedPhase] ?? 'offline') === 'offline') {
+            if ($queued === false) {
+                return;
+            }
+            $this->observeWakeup((string) $queued['id']);
+            if (($this->agentModes[(string) $queued['phase']] ?? 'offline') === 'offline') {
                 return;
             }
             $job = $this->claimer()->claim($this->hostId)->job;
@@ -466,6 +567,20 @@ final class BackupLifecycleTest extends TestCase
                 null
             ));
         $this->claimed = null;
+    }
+
+    private function observeWakeup(string $jobId): void
+    {
+        foreach ($this->wakeupObservations as $observation) {
+            if ($observation['jobId'] === $jobId) {
+                return;
+            }
+        }
+        $this->wakeupObservations[] = [
+            'jobId' => $jobId,
+            'wakeup' => is_file($this->wakeupPath($jobId)),
+            'transactionLevel' => $this->connection->getTransactionNestingLevel(),
+        ];
     }
 
     private function claimer(): JobClaimer

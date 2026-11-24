@@ -19,6 +19,7 @@ use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Action\ActionDefinitionException;
 use MuckiSafeAgentPlugin\Service\Job\JobCreator;
 use MuckiSafeAgentPlugin\Service\Job\JobWaiter;
+use MuckiSafeAgentPlugin\Service\Wakeup\WakeupWriter;
 
 /**
  * Materializes one hook as a targeted job of a backup run and waits for its
@@ -26,7 +27,8 @@ use MuckiSafeAgentPlugin\Service\Job\JobWaiter;
  * the server-side clamped budget; the job idempotency key `<run>:<phase>`
  * guarantees at most one job per run and phase. A job that cannot be
  * created (agent revoked, capability or action gone meanwhile) is a failed
- * hook, not a crash.
+ * hook, not a crash. The wakeup is written only after JobCreator committed;
+ * a lost wakeup (writer failure, crash in between) is healed by polling.
  */
 final class HostAgentHookExecutor
 {
@@ -39,6 +41,7 @@ final class HostAgentHookExecutor
         private readonly Connection $connection,
         private readonly JobCreator $jobCreator,
         private readonly JobWaiter $waiter,
+        private readonly WakeupWriter $wakeupWriter,
         private readonly ?\Closure $clock = null
     ) {
     }
@@ -61,6 +64,7 @@ final class HostAgentHookExecutor
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return new HookOutcome('not_created', null);
         }
+        $this->wakeupWriter->signal($jobId);
 
         return new HookOutcome($this->waiter->wait($jobId), $jobId);
     }
