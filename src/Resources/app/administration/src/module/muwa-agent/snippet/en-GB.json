@@ -52,6 +52,7 @@
     },
     "errors": {
       "invalid_request": "The request is invalid.",
+      "keyring_unavailable": "The encryption keyring for agent secrets is missing or invalid (MUWA_AGENT_ENCRYPTION_KEYRING). Check the server configuration.",
       "operation_failed": "The operation failed. See the log for details.",
       "invalid_definition": "The action definition is invalid.",
       "technical_name_taken": "The technical name is already taken.",

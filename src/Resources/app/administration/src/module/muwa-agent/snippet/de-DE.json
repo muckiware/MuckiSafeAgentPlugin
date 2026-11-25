@@ -52,6 +52,7 @@
     },
     "errors": {
       "invalid_request": "Die Anfrage ist ungültig.",
+      "keyring_unavailable": "Der Verschlüsselungsschlüssel für Agent-Secrets fehlt oder ist ungültig (MUWA_AGENT_ENCRYPTION_KEYRING). Bitte die Server-Konfiguration prüfen.",
       "operation_failed": "Die Aktion ist fehlgeschlagen. Details stehen im Log.",
       "invalid_definition": "Die Action-Definition ist ungültig.",
       "technical_name_taken": "Der technische Name ist bereits vergeben.",

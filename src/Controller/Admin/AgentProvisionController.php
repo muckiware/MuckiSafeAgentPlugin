@@ -21,6 +21,7 @@ use Symfony\Component\Routing\Attribute\Route;
 use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
 use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
+use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyringException;
 use MuckiSafeAgentPlugin\Service\Secret\MasterKeyReencryptor;
 
 #[Route(defaults: ['_routeScope' => ['administration']])]
@@ -47,6 +48,8 @@ final class AgentProvisionController
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
+        } catch (EncryptionKeyringException $exception) {
+            return $this->keyringUnavailable($exception);
         } catch (\Throwable $exception) {
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
@@ -63,6 +66,8 @@ final class AgentProvisionController
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
+        } catch (EncryptionKeyringException $exception) {
+            return $this->keyringUnavailable($exception);
         } catch (\Throwable $exception) {
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
@@ -110,11 +115,20 @@ final class AgentProvisionController
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'invalid_request'], Response::HTTP_BAD_REQUEST);
+        } catch (EncryptionKeyringException $exception) {
+            return $this->keyringUnavailable($exception);
         } catch (\Throwable $exception) {
 
             $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
             return $this->noStore(['error' => 'operation_failed'], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
+    }
+
+    /** Missing or invalid MUWA_AGENT_ENCRYPTION_KEYRING: a server configuration error, not a bad request. */
+    private function keyringUnavailable(EncryptionKeyringException $exception): JsonResponse
+    {
+        $this->logger->error($exception->getMessage(), PluginDefaults::DEFAULT_LOGGER_CONFIG);
+        return $this->noStore(['error' => 'keyring_unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
     }
 
     /** @return array<string, mixed> */

@@ -17,6 +17,7 @@ use MuckiSafeAgentPlugin\Service\Auth\SignatureFormat;
 use MuckiSafeAgentPlugin\Service\Secret\AgentProvisioner;
 use MuckiSafeAgentPlugin\Service\Secret\AgentSecretRotator;
 use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider;
+use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyringException;
 use MuckiSafeAgentPlugin\Service\Secret\SecretCipher;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -52,13 +53,15 @@ final class SensitiveParameterTest extends TestCase
     {
         $previous = ini_set('zend.exception_ignore_args', '0');
         try {
-            new EncryptionKeyProvider('TOP-SECRET-KEYRING');
+            (new EncryptionKeyProvider('TOP-SECRET-KEYRING'))->activeKey();
             self::fail('Invalid keyring must throw.');
-        } catch (\InvalidArgumentException $exception) {
-            $args = $exception->getTrace()[0]['args'] ?? [];
-            self::assertCount(1, $args);
-            self::assertInstanceOf(\SensitiveParameterValue::class, $args[0]);
-            self::assertStringNotContainsString('TOP-SECRET-KEYRING', $exception->__toString());
+        } catch (EncryptionKeyringException $exception) {
+            for ($current = $exception; $current !== null; $current = $current->getPrevious()) {
+                self::assertStringNotContainsString('TOP-SECRET-KEYRING', $current->__toString());
+                foreach ($current->getTrace() as $frame) {
+                    self::assertStringNotContainsString('TOP-SECRET-KEYRING', var_export($frame['args'] ?? [], true));
+                }
+            }
         } finally {
             if ($previous !== false) {
                 ini_set('zend.exception_ignore_args', $previous);
