@@ -1,0 +1,120 @@
+name: Go tests
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Vet, race tests and coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+
+      - name: "Install Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: "gofmt"
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "::error::not gofmt-formatted: ${unformatted}"
+            exit 1
+          fi
+
+      - name: "go vet (linux/amd64, linux/arm64)"
+        run: |
+          GOOS=linux GOARCH=amd64 go vet ./...
+          GOOS=linux GOARCH=arm64 go vet ./...
+
+      # As root like the agent itself: the primitives chown, set ACLs and
+      # check readability through setgroups/setfsuid. Root gets its own build
+      # cache so the runner-owned Go cache stays cacheable.
+      - name: "go test -race with coverage (as root)"
+        run: |
+          sudo env "PATH=${PATH}" "GOMODCACHE=$(go env GOMODCACHE)" GOCACHE=/tmp/go-build-root GOFLAGS=-modcacherw \
+            go test -race -covermode=atomic -coverprofile=coverage.out ./...
+          sudo chown "$(id -u):$(id -g)" coverage.out
+
+      - name: "Coverage summary"
+        run: go tool cover -func=coverage.out | tail -n 1
+
+      - name: "Upload coverage"
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-coverage
+          path: agent/coverage.out
+          if-no-files-found: error
+
+  signals:
+    name: Graceful shutdown and signal test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+
+      - name: "Install Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      # Real SIGTERM/SIGHUP to the agent while a fake action process runs;
+      # asserts the journalled completion before exit. Repeated to catch races.
+      - name: "SIGTERM, SIGHUP and start refusal (10 runs)"
+        run: go test -race -count=10 -v -run 'TestSigterm|TestSighup|TestStartFailsClosed|TestRevokedKey' ./internal/daemon/
+
+  scripts:
+    name: Shellcheck of packaging and test scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+
+      - name: "shellcheck"
+        run: shellcheck agent/packaging/*.sh agent/packaging/tests/*.sh tests/Artifacts/*.sh
+
+  artifacts:
+    name: Static release binaries (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # Native amd64 and arm64: each runner checks both binaries statically
+        # and runs its native one (ldd, --version, config validate).
+        runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+
+      - name: "Install Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: "Build release directory"
+        run: agent/packaging/build-release.sh "0.0.0-ci.${{ github.run_number }}" dist/agent
+
+      - name: "Check release artifacts"
+        run: agent/packaging/tests/binary-artifacts-test.sh dist/agent "0.0.0-ci.${{ github.run_number }}"

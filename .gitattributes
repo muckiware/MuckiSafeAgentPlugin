@@ -7,6 +7,7 @@
 /.gitignore export-ignore
 /.gitattributes export-ignore
 /phpunit.xml.dist export-ignore
+/phpstan.neon export-ignore
 
 # Normalize line endings for text files
 *.php text eol=lf
@@ -15,3 +16,6 @@
 *.sh text eol=lf
 *.md text eol=lf
 *.yaml text eol=lf
+*.yml text eol=lf
+*.go text eol=lf
+*.service text eol=lf

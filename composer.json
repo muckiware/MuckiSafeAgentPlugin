@@ -48,6 +48,22 @@
 			"MuckiSafeAgentPlugin\\": "tests/"
 		}
 	},
+	"archive": {
+		"exclude": [
+			"/agent",
+			"/tests",
+			"/.github",
+			"/docs",
+			"/examples",
+			"/vendor",
+			"/var",
+			"/phpunit.xml.dist",
+			"/phpstan.neon",
+			"/.gitignore",
+			"/.gitattributes",
+			"/.phpunit.result.cache"
+		]
+	},
 	"config": {
 		"allow-plugins": {
 			"symfony/runtime": true,
@@ -61,6 +77,6 @@
 			"@test:unit",
 			"@test:integration"
 		],
-		"phpstan": "phpstan analyse -n --no-progress"
+		"phpstan": "phpstan analyse -n --no-progress -c phpstan.neon"
 	}
 }

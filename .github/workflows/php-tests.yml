@@ -1,4 +1,4 @@
-name: Testing
+name: PHP tests
 
 on:
   push:
@@ -24,6 +24,27 @@ env:
   TEST_DATABASE_URL: "mysql://root:root@127.0.0.1:3306/db_test"
 
 jobs:
+  package:
+    name: Composer metadata and plugin archive
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@v7
+
+      - name: Install PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: "Validate composer.json"
+        # The version field stays: create-release.yml reads the release version from it.
+        run: composer validate --strict --no-check-lock --no-check-version
+
+      - name: "Plugin archive contains no agent, Go, test or CI files"
+        run: tests/Artifacts/plugin-archive-test.sh
+
   ci-current:
     name: SW ${{ matrix.shopware-versions }}, PHP ${{ matrix.php-versions }}, MySQL ${{ matrix.mysql-versions }}
     runs-on: ubuntu-latest
@@ -31,7 +52,7 @@ jobs:
       max-parallel: 15
       fail-fast: false
       matrix:
-        php-versions: [ '8.4', '8.5' ]
+        php-versions: [ '8.3', '8.4', '8.5' ]
         mysql-versions: [ '8.0', '8.4' ]
         shopware-versions: [ 'v6.6.10.32', 'v6.7.16.1' ]
     services:
@@ -86,7 +107,7 @@ jobs:
 
       - name: "Get composer cache directory"
         id: composer-cache
-        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
 
       - name: "Cache Composer dependencies"
         uses: actions/cache@v6
@@ -123,10 +144,12 @@ jobs:
 
       - name: "Install Shopware"
         run: |
-          echo APP_ENV=dev >> .env
-          echo APP_URL=http://localhost >> .env
-          echo DATABASE_URL=${{ env.TEST_DATABASE_URL }} >> .env
-          echo APP_SECRET=secretf0rt3st >> .env
+          {
+            echo APP_ENV=dev
+            echo APP_URL=http://localhost
+            echo DATABASE_URL=${{ env.TEST_DATABASE_URL }}
+            echo APP_SECRET=secretf0rt3st
+          } >> .env
           bin/console system:install --basic-setup
 
       - name: "Install and activate plugins"
@@ -134,6 +157,9 @@ jobs:
           bin/console plugin:refresh
           bin/console plugin:install --activate ${{ env.FACILITY_MODULE_NAME }}
           bin/console plugin:install --activate ${{ env.MODULE_NAME }}
+
+      - name: "PHPStan"
+        run: ./vendor/bin/phpstan analyse -n --no-progress --memory-limit=2G -c "${{ env.MODULE_DIR }}/phpstan.neon"
 
       - name: "Run PHPUnit Tests"
         run: ./vendor/bin/phpunit --configuration="${{ env.MODULE_DIR }}/phpunit.xml.dist" --no-progress
