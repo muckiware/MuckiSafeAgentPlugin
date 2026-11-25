@@ -64,6 +64,20 @@ paths:
   immich-profile:
     root: /opt/immich/library/profile
     recursive: true
+  # Paperless-ngx data roots. The agent only verifies them; the database is
+  # saved by MuckiSafe's typed database backup, never by a host script.
+  paperless-data:
+    root: /data/dokumente/data
+    recursive: true
+  paperless-media:
+    root: /data/dokumente/media
+    recursive: true
+  paperless-export:
+    root: /data/dokumente/export
+    recursive: true
+  paperless-consume:
+    root: /data/dokumente/consume
+    recursive: true
 
 destinations:
   # Manual database dumps of the agent, kept apart from Immich's automatic
@@ -140,6 +154,24 @@ checks:
     destinationAlias: immich-manual-backups
     readableBy: muckisafe-backup
     minimumSize: 1
+  # The Paperless action grants no read ACL: the roots must already be
+  # readable by the backup principal.
+  paperless-data-required-readable:
+    pathAlias: paperless-data
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-media-required-readable:
+    pathAlias: paperless-media
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-export-required-readable:
+    pathAlias: paperless-export
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-consume-required-readable:
+    pathAlias: paperless-consume
+    readableBy: muckisafe-backup
+    recursive: true
 
 endpoints:
   # Optional health probe for a post action; replace host and address range.
@@ -159,3 +191,13 @@ endpoints:
     allowedIpRanges: [127.0.0.0/8]
     timeoutSeconds: 120
     intervalSeconds: 1
+  # Paperless web after the backup: 200, or exactly its login redirect.
+  paperless-web:
+    url: http://127.0.0.1:8091/
+    expectedStatuses: [200, 302]
+    allowedIpRanges: [127.0.0.0/8]
+    timeoutSeconds: 120
+    intervalSeconds: 2
+    maximumBodyBytes: 65536
+    locations:
+      302: /accounts/login/?next=/

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "paperless-web",
+      "expectedStatuses": [
+        200,
+        302
+      ]
+    }
+  ]
+}
