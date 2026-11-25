@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "docker.container.exec",
+      "containerAlias": "bitwarden-mssql",
+      "commandAlias": "bitwarden-full-backup",
+      "arguments": {}
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "bitwarden-data",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "bitwarden-current-full-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "bitwarden-required-files"
+    }
+  ]
+}

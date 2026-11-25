@@ -141,7 +141,16 @@ func TestLaterStepFailureIsAPartialFailure(t *testing.T) {
 	primitive := &fakePrimitive{fail: map[string]error{"immich": errors.New("boom")}}
 	result := newExecutor(t, primitive).Execute(context.Background(), job(t, "jellyfin", "immich"), gateOpen)
 
-	if result.Outcome != "failed" || result.ResultCode != "partial_failure" {
+	if result.Outcome != "failed" || result.ResultCode != "partial_failure" || !strings.HasPrefix(result.Summary, "[step_failed] step 2") {
+		t.Fatalf("result %+v", result)
+	}
+}
+
+func TestPartialFailureKeepsTheStepCodeInTheSummary(t *testing.T) {
+	primitive := &fakePrimitive{fail: map[string]error{"immich": &StepError{Code: "verification_failed", Message: "not readable"}}}
+	result := newExecutor(t, primitive).Execute(context.Background(), job(t, "jellyfin", "immich"), gateOpen)
+
+	if result.ResultCode != "partial_failure" || !strings.HasPrefix(result.Summary, "[verification_failed] step 2 (service.control) failed: not readable") {
 		t.Fatalf("result %+v", result)
 	}
 }

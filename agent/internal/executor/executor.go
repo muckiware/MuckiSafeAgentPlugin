@@ -105,11 +105,11 @@ func (e *Executor) Execute(ctx context.Context, job agent.Job, gate agent.StepGa
 	for index, step := range steps {
 		name, _ := step["primitive"].(string)
 		if err := gate(); err != nil {
-			return e.fail(failureCode(index, "stopped_before_start"), fmt.Sprintf("Execution stopped before step %d (%s): %v.", index+1, name, err), stdout, stderr)
+			return e.stepFailure(index, "stopped_before_start", fmt.Sprintf("Execution stopped before step %d (%s): %v.", index+1, name, err), stdout, stderr)
 		}
 		primitive, ok := e.Primitives[name]
 		if !ok {
-			return e.fail(failureCode(index, "primitive_unavailable"), fmt.Sprintf("Step %d: primitive %s is not available on this agent.", index+1, name), stdout, stderr)
+			return e.stepFailure(index, "primitive_unavailable", fmt.Sprintf("Step %d: primitive %s is not available on this agent.", index+1, name), stdout, stderr)
 		}
 		err := primitive.Run(ctx, StepContext{
 			Job: job, Index: index, Step: step, Started: started, Policy: snapshot,
@@ -121,7 +121,7 @@ func (e *Executor) Execute(ctx context.Context, job agent.Job, gate agent.StepGa
 				Summary: fmt.Sprintf("Step %d (%s): the process did not terminate; the effect is unknown.", index+1, name)}
 		}
 		if err != nil {
-			return e.fail(failureCode(index, stepCode(err)), fmt.Sprintf("step %d (%s) failed: %v", index+1, name, err), stdout, stderr)
+			return e.stepFailure(index, stepCode(err), fmt.Sprintf("step %d (%s) failed: %v", index+1, name, err), stdout, stderr)
 		}
 	}
 	return api.CompletionResult{Outcome: "succeeded", ResultCode: "ok", Summary: fmt.Sprintf("%d steps completed.", len(steps))}
@@ -148,12 +148,14 @@ func verifiedSteps(job agent.Job) ([]map[string]any, error) {
 	return steps, nil
 }
 
-// failureCode follows plan 2.7: once a step ran, the code is partial_failure.
-func failureCode(index int, code string) string {
+// stepFailure follows plan 2.7: once a step ran, the code is partial_failure.
+// The step's own code then stays visible as "[code] " summary prefix, the
+// same form api.CompletionResult.ForWire uses for codes outside the allowlist.
+func (e *Executor) stepFailure(index int, code, summary string, stdout, stderr *Tail) api.CompletionResult {
 	if index > 0 {
-		return "partial_failure"
+		return e.fail("partial_failure", "["+code+"] "+summary, stdout, stderr)
 	}
-	return code
+	return e.fail(code, summary, stdout, stderr)
 }
 
 func stepCode(err error) string {

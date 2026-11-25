@@ -3,6 +3,7 @@
 /tests export-ignore
 /agent export-ignore
 /docs export-ignore
+/examples export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
 /phpunit.xml.dist export-ignore
@@ -13,3 +14,4 @@
 *.json text eol=lf
 *.sh text eol=lf
 *.md text eol=lf
+*.yaml text eol=lf

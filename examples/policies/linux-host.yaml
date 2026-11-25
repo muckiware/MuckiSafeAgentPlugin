@@ -1,0 +1,65 @@
+# MuckiSafe agent policy for a Linux host (V1). Unknown sections and keys are
+# rejected. Install as /etc/mucki-agent/policy.yaml, owned by root:root with
+# mode 0644 or stricter; every parent directory must be root-owned and not
+# writable by group or others.
+#
+# The policy is the only source of host paths, units, containers, argv, URLs
+# and ids. Actions sent by the control plane contain nothing but the aliases
+# defined here. Adjust the values to the host before use.
+version: 1
+
+containers:
+  bitwarden-mssql:
+    name: bitwarden-mssql
+
+commands:
+  # Creates a full MSSQL backup (.BAK) below bwdata/mssql/backups.
+  bitwarden-full-backup:
+    containerAlias: bitwarden-mssql
+    argv: [/backup-db.sh]
+    timeoutSeconds: 600
+
+paths:
+  bitwarden-data:
+    root: /opt/bitwarden
+    recursive: true
+
+principals:
+  # The user the MuckiSafe container reads backup sources as (www-data).
+  muckisafe-backup:
+    uid: 33
+    gid: 33
+
+checks:
+  # A non-empty .BAK created by the current run must be readable.
+  bitwarden-current-full-backup:
+    pathAlias: bitwarden-data
+    readableBy: muckisafe-backup
+    match:
+      directory: bwdata/mssql/backups
+      suffix: .BAK
+      createdByCurrentRun: true
+      minimumSize: 1
+  # Restore-critical files besides the database.
+  bitwarden-required-files:
+    pathAlias: bitwarden-data
+    readableBy: muckisafe-backup
+    relativePaths:
+      - bwdata/env/global.override.env
+      - bwdata/identity/identity.pfx
+    match:
+      directory: bwdata/core/aspnet-dataprotection
+      suffix: .xml
+      minimumCount: 1
+
+endpoints:
+  # Optional health probe for a post action; replace host and address range.
+  bitwarden-config:
+    url: https://bitwarden.example.org/api/config
+    expectedStatuses: [200]
+    allowedIpRanges: [203.0.113.10/32]
+    timeoutSeconds: 30
+    intervalSeconds: 2
+    maximumBodyBytes: 65536
+    jsonFields:
+      version: "2026.10.1"

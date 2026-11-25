@@ -1,0 +1,91 @@
+{
+  "fixtureVersion": 1,
+  "service": "bitwarden",
+  "contract": "tests/E2E/contracts/bitwarden.json",
+  "action": "examples/actions/bitwarden.json",
+  "policy": "examples/policies/linux-host.yaml",
+  "policyRoot": "/opt/bitwarden",
+  "description": "Pre phase of the Bitwarden reference action against a seeded bwdata tree. The agent reference test (agent/internal/primitives/reference_bitwarden_test.go) replays every scenario with a fake backup command; the live E2E of Task 32 replays them against the pinned MSSQL image.",
+  "seed": {
+    "directories": [
+      {"path": "bwdata", "mode": "0750"},
+      {"path": "bwdata/env", "mode": "0700"},
+      {"path": "bwdata/identity", "mode": "0700"},
+      {"path": "bwdata/core", "mode": "0750"},
+      {"path": "bwdata/core/aspnet-dataprotection", "mode": "0700"},
+      {"path": "bwdata/core/attachments", "mode": "0700"},
+      {"path": "bwdata/core/attachments/cipher-1", "mode": "0700"},
+      {"path": "bwdata/mssql", "mode": "0750"},
+      {"path": "bwdata/mssql/backups", "mode": "0700", "uid": 10001, "gid": 0}
+    ],
+    "files": [
+      {"path": "bwdata/env/global.override.env", "mode": "0600", "content": "globalSettings__baseServiceUri__vault=https://bitwarden.example.org\n"},
+      {"path": "bwdata/identity/identity.pfx", "mode": "0600", "content": "PKCS12-fixture"},
+      {"path": "bwdata/core/aspnet-dataprotection/key-1.xml", "mode": "0600", "content": "<key id=\"1\"/>"},
+      {"path": "bwdata/core/attachments/cipher-1/attachment-1", "mode": "0600", "content": "encrypted attachment"},
+      {"path": "bwdata/mssql/backups/vault_FULL_20261101_000000.BAK", "mode": "0600", "uid": 10001, "gid": 0, "content": "stale backup of an earlier run"}
+    ]
+  },
+  "backupCommand": {
+    "containerAlias": "bitwarden-mssql",
+    "commandAlias": "bitwarden-full-backup",
+    "container": "bitwarden-mssql",
+    "argv": ["/backup-db.sh"],
+    "artifact": {"directory": "bwdata/mssql/backups", "name": "vault_FULL_current.BAK", "mode": "0600", "uid": 10001, "gid": 0, "bytes": 8192}
+  },
+  "core": {
+    "operation": "muckisafe.backup",
+    "readableBy": {"uid": 33, "gid": 33},
+    "source": "bwdata"
+  },
+  "scenarios": [
+    {
+      "name": "success",
+      "inject": {},
+      "expect": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed", "core": "readable"}
+    },
+    {
+      "name": "backup command fails",
+      "inject": {"commandExit": 1, "artifact": "none"},
+      "expect": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[command_failed] step 1 (docker.container.exec)"}
+    },
+    {
+      "name": "stale BAK only",
+      "inject": {"artifact": "none"},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 3 (filesystem.assert-readable)"}
+    },
+    {
+      "name": "zero-byte BAK",
+      "inject": {"artifactBytes": 0},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 3 (filesystem.assert-readable)"}
+    },
+    {
+      "name": "identity.pfx missing",
+      "inject": {"remove": "bwdata/identity/identity.pfx"},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 4 (filesystem.assert-readable)"}
+    },
+    {
+      "name": "data-protection key missing",
+      "inject": {"remove": "bwdata/core/aspnet-dataprotection/key-1.xml"},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 4 (filesystem.assert-readable)"}
+    },
+    {
+      "name": "env directory replaced by a symlink",
+      "inject": {"symlink": {"path": "bwdata/env", "target": "/etc"}},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[policy_rejected] step 4 (filesystem.assert-readable)"}
+    }
+  ],
+  "cleanup": {
+    "selector": {
+      "pathAlias": "bitwarden-data",
+      "relativeDirectory": "bwdata/mssql/backups",
+      "artifacts": "files created during the run, recorded with device/inode before cleanup",
+      "deviceInodeMatch": true,
+      "linkCount": 1,
+      "noSymlinks": true
+    },
+    "onIdentityMismatch": "delete_nothing",
+    "aclRestore": {"trustedPreTestSnapshot": true, "rootIdentityMatch": true, "onMismatch": "mutate_nothing"},
+    "endState": "seed tree and ACLs exactly as before the run"
+  }
+}

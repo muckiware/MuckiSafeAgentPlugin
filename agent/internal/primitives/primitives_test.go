@@ -58,6 +58,16 @@ type fakeScript struct {
 	Exit      int    `json:"exit"`
 	Sleeps    bool   `json:"sleeps"`
 	State     string `json:"state"`
+	// Create is a file the fake command creates, like /backup-db.sh its .BAK.
+	Create *fakeFile `json:"create"`
+}
+
+type fakeFile struct {
+	Path  string      `json:"path"`
+	Bytes int         `json:"bytes"`
+	UID   int         `json:"uid"`
+	GID   int         `json:"gid"`
+	Mode  os.FileMode `json:"mode"`
 }
 
 // script installs the fake script for processes started by this test.
@@ -112,6 +122,11 @@ func fakeDocker(s fakeScript, args []string) int {
 	}
 	if s.Sleeps {
 		time.Sleep(time.Hour)
+	}
+	if c := s.Create; c != nil {
+		if os.WriteFile(c.Path, []byte(strings.Repeat("B", c.Bytes)), c.Mode) != nil || os.Chown(c.Path, c.UID, c.GID) != nil || os.Chmod(c.Path, c.Mode) != nil {
+			return 95
+		}
 	}
 	for i := 0; i < max(1, s.Repeat); i++ {
 		fmt.Fprint(os.Stdout, s.Output)
