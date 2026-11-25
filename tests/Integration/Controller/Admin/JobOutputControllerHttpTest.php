@@ -37,6 +37,7 @@ final class JobOutputControllerHttpTest extends TestCase
     use AdminApiTestBehaviour;
 
     private const VIEWER = ['muwa_agent.viewer', 'muwa_agent_job:read', 'muwa_agent_backup_run:read'];
+    private const JSON_API = ['HTTP_ACCEPT' => 'application/vnd.api+json'];
 
     private Connection $connection;
     private string $runId;
@@ -63,7 +64,8 @@ final class JobOutputControllerHttpTest extends TestCase
         $jobId = $this->insertFailedJob();
         $browser = $this->browserWithPermissions(self::VIEWER);
 
-        $browser->jsonRequest('POST', '/api/search/muwa-agent-job', ['ids' => [$jobId]]);
+        // Explicit per request: only the 6.7 TestBrowser keeps a preset Accept header in jsonRequest(), 6.6 forces application/json.
+        $browser->jsonRequest('POST', '/api/search/muwa-agent-job', ['ids' => [$jobId]], self::JSON_API);
         $job = $this->decoded($browser, Response::HTTP_OK)['data'][0]['attributes'];
         self::assertSame('failed', $job['status']);
         self::assertSame('step_failed', $job['resultCode']);
@@ -74,7 +76,7 @@ final class JobOutputControllerHttpTest extends TestCase
         self::assertStringNotContainsString('SECRET-STDOUT', (string) $browser->getResponse()->getContent());
         self::assertStringNotContainsString('SECRET-STDERR', (string) $browser->getResponse()->getContent());
 
-        $browser->jsonRequest('POST', '/api/search/muwa-agent-backup-run', ['ids' => [$this->runId]]);
+        $browser->jsonRequest('POST', '/api/search/muwa-agent-backup-run', ['ids' => [$this->runId]], self::JSON_API);
         self::assertSame('failed', $this->decoded($browser, Response::HTTP_OK)['data'][0]['attributes']['status']);
     }
 

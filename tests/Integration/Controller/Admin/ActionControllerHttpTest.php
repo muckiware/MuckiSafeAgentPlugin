@@ -213,7 +213,8 @@ final class ActionControllerHttpTest extends TestCase
         $id = (string) $this->decoded($browser, Response::HTTP_OK)['id'];
         $viewer = $this->browserWithPermissions(['muwa_agent.viewer', 'muwa_agent_action:read']);
 
-        $viewer->jsonRequest('POST', '/api/search/muwa-agent-action', ['ids' => [$id]]);
+        // Explicit per request: only the 6.7 TestBrowser keeps a preset Accept header in jsonRequest(), 6.6 forces application/json.
+        $viewer->jsonRequest('POST', '/api/search/muwa-agent-action', ['ids' => [$id]], ['HTTP_ACCEPT' => 'application/vnd.api+json']);
 
         $body = $this->decoded($viewer, Response::HTTP_OK);
         $attributes = $body['data'][0]['attributes'];
