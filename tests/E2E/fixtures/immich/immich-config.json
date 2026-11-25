@@ -1,0 +1,10 @@
+{
+  "backup": {
+    "database": {
+      "enabled": false
+    }
+  },
+  "newVersionCheck": {
+    "enabled": false
+  }
+}

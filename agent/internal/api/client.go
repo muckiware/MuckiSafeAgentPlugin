@@ -71,8 +71,8 @@ func NewClient(opts ClientOptions) (*Client, error) {
 	}
 	baseURL := strings.TrimSuffix(opts.BaseURL, "/")
 	if strings.HasPrefix(baseURL, "http://") {
-		logger.Warn("agent API uses plain HTTP: requests and responses are HMAC-protected but not confidential",
-			"url", baseURL)
+		logger.Warn("agent API uses plain HTTP: requests and responses are HMAC-protected but not confidential; "+
+			"actions, parameters, results and error output can be read on the network", "url", baseURL)
 	}
 	transport := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,

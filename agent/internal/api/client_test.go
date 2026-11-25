@@ -177,6 +177,12 @@ func TestHTTPNeedsTheFlagAndWarnsOnEveryStart(t *testing.T) {
 	if !strings.Contains(logs.String(), "level=WARN") || !strings.Contains(logs.String(), "not confidential") {
 		t.Fatalf("expected a prominent HTTP warning, got %q", logs.String())
 	}
+	// The warning names what is readable on the network.
+	for _, readable := range []string{"actions", "parameters", "error output"} {
+		if !strings.Contains(logs.String(), readable) {
+			t.Fatalf("the HTTP warning must say that %s are readable, got %q", readable, logs.String())
+		}
+	}
 	if _, err := client.Claim(context.Background()); err != nil {
 		t.Fatalf("signed HTTP must work with the flag: %v", err)
 	}
