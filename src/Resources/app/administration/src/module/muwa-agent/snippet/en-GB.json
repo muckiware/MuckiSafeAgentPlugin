@@ -1,0 +1,196 @@
+{
+  "muwa-agent": {
+    "general": {
+      "mainMenuLabel": "Mucki Agent",
+      "description": "Manage host agents for MuckiSafe backups"
+    },
+    "tabs": {
+      "hosts": "Agents",
+      "actions": "Actions",
+      "hooks": "Repository hooks",
+      "runs": "Runs & jobs"
+    },
+    "host": {
+      "nameLabel": "Name",
+      "statusLabel": "Status",
+      "versionLabel": "Version",
+      "lastSeenAtLabel": "Last seen",
+      "capabilitiesLabel": "Capabilities",
+      "keyIdLabel": "Key ID",
+      "neverSeen": "Never",
+      "emptyState": "No agents have been provisioned yet.",
+      "provisionButton": "Provision agent",
+      "rotateAction": "Rotate secret",
+      "revokeAction": "Revoke",
+      "rotateConfirmTitle": "Rotate secret",
+      "rotateConfirmText": "A new secret will be issued for \"{name}\". The current secret stops working immediately until the agent on the host receives the new one.",
+      "revokeConfirmTitle": "Revoke agent",
+      "revokeConfirmText": "\"{name}\" will be revoked permanently and can no longer authenticate. A revocation cannot be undone.",
+      "revokeSuccess": "\"{name}\" has been revoked.",
+      "status": {
+        "active": "Active",
+        "pending": "Waiting for first contact",
+        "disabled": "Disabled",
+        "revoked": "Revoked"
+      }
+    },
+    "provision": {
+      "title": "Provision agent",
+      "description": "Creates a new agent and issues its key ID and secret. The secret is shown exactly once.",
+      "namePlaceholder": "e.g. nas-01"
+    },
+    "secret": {
+      "provisionTitle": "Agent provisioned",
+      "rotateTitle": "New secret issued",
+      "onceWarning": "The secret is shown only now and cannot be retrieved later. Store it securely before closing this dialog.",
+      "keyIdLabel": "Key ID",
+      "keyIdHelp": "Value for server.keyId in the agent configuration.",
+      "secretLabel": "Secret",
+      "secretHelp": "Content of the file configured as server.secretFile (readable by root only).",
+      "confirmStored": "I have stored the secret securely.",
+      "done": "Done"
+    },
+    "errors": {
+      "invalid_request": "The request is invalid.",
+      "operation_failed": "The operation failed. See the log for details.",
+      "invalid_definition": "The action definition is invalid.",
+      "technical_name_taken": "The technical name is already taken.",
+      "action_not_found": "The action no longer exists.",
+      "timeout_out_of_range": "The phase budget is outside the allowed range.",
+      "facility_unavailable": "MuckiFacilityPlugin is not active.",
+      "facility_repository_not_found": "The Facility repository does not exist.",
+      "legacy_hook_conflict": "Legacy hooks are still active on the Facility repository.",
+      "agent_unavailable": "The target agent is revoked, disabled or does not exist.",
+      "capability_missing": "The target agent lacks a capability the action requires.",
+      "action_unavailable": "The action is disabled or does not exist.",
+      "hook_not_found": "The hook no longer exists.",
+      "job_not_found": "The job no longer exists."
+    },
+    "action": {
+      "createButton": "Create action",
+      "createTitle": "New action",
+      "emptyState": "No actions have been created yet.",
+      "generalCardTitle": "General",
+      "definitionCardTitle": "Definition",
+      "labelLabel": "Label",
+      "technicalNameLabel": "Technical name",
+      "technicalNameHelp": "Unique ID made of lowercase letters, digits, - and _ (max. 64 characters). Cannot be changed after creation.",
+      "enabledLabel": "Active",
+      "idempotencyClassLabel": "Idempotency class",
+      "idempotencyClassHelp": "safe: may run again after a lease expires. non_retryable: never retried automatically; an interruption ends as unknown.",
+      "idempotencyClasses": {
+        "safe": "safe (retryable)",
+        "non_retryable": "non_retryable (not retryable)"
+      },
+      "retryPolicyLabel": "Retry",
+      "retryPolicies": {
+        "safe": "Up to 3 attempts on lease expiry",
+        "non_retryable": "No automatic retry"
+      },
+      "defaultTimeoutSecondsLabel": "Default timeout (seconds)",
+      "maxTimeoutSecondsLabel": "Maximum timeout (seconds)",
+      "maxTimeoutSecondsHelp": "Upper bound for the phase budget of a repository hook using this action (45 to 1800 seconds).",
+      "requiredCapabilitiesLabel": "Required capabilities",
+      "seconds": "{seconds} s",
+      "definitionLabel": "Action definition (JSON, DSL v1)",
+      "definitionHint": "The server strictly validates the definition against action DSL v1 and stores it canonically. Capabilities and hash are derived from it. Parameters are not part of v1.",
+      "definitionErrorTitle": "The definition is invalid",
+      "validationSuccessTitle": "The definition is valid",
+      "hashLabel": "SHA-256",
+      "validateButton": "Validate definition",
+      "saveSuccess": "The action has been saved.",
+      "fieldErrors": {
+        "technicalName": "Invalid or already taken. Allowed: a-z, 0-9, - and _, starting with a letter.",
+        "label": "Please enter a label of at most 255 characters.",
+        "enabled": "Invalid value.",
+        "definition": "The definition is missing.",
+        "defaultTimeoutSeconds": "Must be between 45 seconds and the maximum timeout.",
+        "maxTimeoutSeconds": "Must be between 45 and 1800 seconds.",
+        "idempotencyClass": "Invalid idempotency class.",
+        "id": "Invalid action ID."
+      }
+    },
+    "hook": {
+      "createButton": "Assign hook",
+      "createTitle": "Assign hook",
+      "editTitle": "Edit hook",
+      "emptyState": "No repository hooks have been assigned yet.",
+      "repositoryLabel": "Facility repository",
+      "phaseLabel": "Phase",
+      "phaseHelp": "There is exactly one hook per repository and phase. Repository and phase are fixed once the hook exists.",
+      "phases": {
+        "pre": "Before the backup (pre)",
+        "post": "After the backup (post)",
+        "finally": "Always at the end (finally)"
+      },
+      "agentLabel": "Target agent",
+      "actionLabel": "Action",
+      "timeoutSecondsLabel": "Phase budget (seconds)",
+      "timeoutSecondsHelp": "Allowed: {min} to {max} seconds (upper bound from the phase and the action's maximum timeout).",
+      "failOnErrorLabel": "Fail backup on error",
+      "failOnErrorHelp": "If the action fails, the backup counts as failed. Without this option the error is only logged.",
+      "enabledLabel": "Active",
+      "unknownReference": "(not found)",
+      "legacyConflictTitle": "Legacy hooks active on the Facility repository",
+      "legacyConflictText": "This repository still runs its own commands ({fields}). Set them to \"No execution\" in the Facility module before assigning agent hooks.",
+      "legacyFields": {
+        "preBackupCommandType": "command before the backup",
+        "postBackupCommandType": "command after the backup"
+      },
+      "capabilityMismatchTitle": "The agent lacks capabilities",
+      "capabilityMismatchText": "The agent does not report these capabilities of the action: {capabilities}. The server rejects the assignment until the agent reports them.",
+      "saveSuccess": "The hook has been saved.",
+      "deleteSuccess": "The hook has been deleted.",
+      "deleteConfirmTitle": "Delete hook",
+      "deleteConfirmText": "The hook for \"{repository}\" in phase {phase} will be deleted. Jobs already created are kept."
+    },
+    "run": {
+      "emptyState": "There are no backup runs with agent hooks yet.",
+      "startedAtLabel": "Started",
+      "statusLabel": "Status",
+      "durationLabel": "Duration",
+      "primaryErrorLabel": "Primary error",
+      "showJobs": "Show jobs",
+      "modalTitle": "Run \"{repository}\" from {date}",
+      "noJobs": "No jobs were created for this run.",
+      "statuses": {
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "unknown": "Unknown"
+      }
+    },
+    "job": {
+      "attemptLabel": "Attempt",
+      "resultLabel": "Result",
+      "showOutput": "Show error output",
+      "outputRequiresExecutor": "The error output (stdout/stderr) is visible with the \"Executor\" role only.",
+      "noOutput": "(empty)",
+      "statuses": {
+        "queued": "Queued",
+        "claimed": "Claimed",
+        "running": "Running",
+        "cancel_requested": "Cancel requested",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "timed_out": "Timed out",
+        "expired": "Expired",
+        "unknown": "Unknown"
+      }
+    }
+  },
+  "sw-privileges": {
+    "permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent"
+      }
+    },
+    "additional_permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent",
+        "provisioner": "Provision agents, rotate secrets and revoke agents",
+        "executor": "Read error output (stdout/stderr) of failed jobs"
+      }
+    }
+  }
+}

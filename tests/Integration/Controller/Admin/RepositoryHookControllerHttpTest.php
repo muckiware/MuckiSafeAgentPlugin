@@ -94,6 +94,27 @@ final class RepositoryHookControllerHttpTest extends TestCase
         self::assertSame(['error' => 'hook_not_found'], $this->json($browser, Response::HTTP_NOT_FOUND));
     }
 
+    public function testGenericApiCannotCreateOrDeleteHooksEvenWithDalPrivileges(): void
+    {
+        $editor = $this->browserWithPermissions(['muwa_agent.editor']);
+        $repositoryId = $this->insertFacilityRepository('none');
+        $editor->jsonRequest('POST', self::SAVE_URL, $this->payload($repositoryId));
+        $hookId = (string) $this->json($editor, Response::HTTP_OK)['id'];
+        $dal = $this->browserWithPermissions([
+            'muwa_agent_repository_hook:read',
+            'muwa_agent_repository_hook:create',
+            'muwa_agent_repository_hook:update',
+            'muwa_agent_repository_hook:delete',
+        ]);
+
+        $dal->jsonRequest('DELETE', '/api/muwa-agent-repository-hook/' . $hookId);
+        self::assertContains($dal->getResponse()->getStatusCode(), [Response::HTTP_BAD_REQUEST, Response::HTTP_FORBIDDEN], (string) $dal->getResponse()->getContent());
+        $dal->jsonRequest('POST', '/api/muwa-agent-repository-hook', array_merge($this->payload($repositoryId), ['phase' => 'post', 'parameters' => '{}']));
+        self::assertContains($dal->getResponse()->getStatusCode(), [Response::HTTP_BAD_REQUEST, Response::HTTP_FORBIDDEN], (string) $dal->getResponse()->getContent());
+
+        self::assertSame(1, $this->hookCount());
+    }
+
     public function testLegacyConflictReturnsTheAffectedFacilityFields(): void
     {
         $browser = $this->browserWithPermissions(['muwa_agent.editor']);

@@ -1,0 +1,12 @@
+.muwa-agent-action-detail {
+    &__hint {
+        margin-bottom: 16px;
+        color: var(--color-darkgray-200, #52667a);
+    }
+
+    &__definition textarea {
+        min-height: 360px;
+        font-family: monospace;
+        font-size: 13px;
+    }
+}

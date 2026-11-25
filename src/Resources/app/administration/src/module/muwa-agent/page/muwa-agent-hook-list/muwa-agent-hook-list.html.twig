@@ -1,0 +1,140 @@
+{% block muwa_agent_hook_list %}
+    <div class="muwa-agent-hook-list">
+        {% block muwa_agent_hook_list_toolbar %}
+            <div class="muwa-agent-toolbar">
+                <sw-button
+                    v-tooltip="{
+                        message: $t('sw-privileges.tooltip.warning'),
+                        disabled: canEdit,
+                        showOnDisabledElements: true
+                    }"
+                    variant="primary"
+                    :disabled="!canEdit || isLoading"
+                    @click="onCreate"
+                >
+                    {{ $t('muwa-agent.hook.createButton') }}
+                </sw-button>
+            </div>
+        {% endblock %}
+
+        {% block muwa_agent_hook_list_grid %}
+            <sw-entity-listing
+                v-if="hooks && hooks.total > 0"
+                :is-loading="isLoading"
+                :items="hooks"
+                :repository="hookRepository"
+                :columns="columns"
+                :show-actions="true"
+                :show-selection="false"
+                :show-settings="false"
+                :allow-inline-edit="false"
+                identifier="muwa-agent-hook-list"
+            >
+                <template #column-facilityRepositoryId="{ item }">
+                    {{ nameOf('repositories', item.facilityRepositoryId) }}
+                </template>
+
+                <template #column-phase="{ item }">
+                    {{ $t(`muwa-agent.hook.phases.${item.phase}`) }}
+                </template>
+
+                <template #column-agentHostId="{ item }">
+                    {{ nameOf('hosts', item.agentHostId) }}
+                </template>
+
+                <template #column-agentActionId="{ item }">
+                    {{ nameOf('actions', item.agentActionId, 'label') }}
+                </template>
+
+                <template #column-timeoutSeconds="{ item }">
+                    {{ $t('muwa-agent.action.seconds', { seconds: item.timeoutSeconds }) }}
+                </template>
+
+                <template #column-failOnError="{ item }">
+                    <sw-icon
+                        :name="item.failOnError ? 'regular-checkmark-xs' : 'regular-times-s'"
+                        size="16px"
+                    />
+                </template>
+
+                <template #column-enabled="{ item }">
+                    <sw-icon
+                        :name="item.enabled ? 'regular-checkmark-xs' : 'regular-times-s'"
+                        size="16px"
+                    />
+                </template>
+
+                {% block muwa_agent_hook_list_grid_actions %}
+                    <template #actions="{ item }">
+                        <sw-context-menu-item
+                            :disabled="!canEdit"
+                            @click="onEdit(item)"
+                        >
+                            {{ $t('global.default.edit') }}
+                        </sw-context-menu-item>
+                        <sw-context-menu-item
+                            variant="danger"
+                            :disabled="!canEdit"
+                            @click="hookToDelete = item"
+                        >
+                            {{ $t('global.default.delete') }}
+                        </sw-context-menu-item>
+                    </template>
+                {% endblock %}
+            </sw-entity-listing>
+
+            <sw-empty-state
+                v-else-if="hooks && !isLoading"
+                :title="$t('muwa-agent.hook.emptyState')"
+                :absolute="false"
+                icon="regular-link"
+            />
+        {% endblock %}
+
+        {% block muwa_agent_hook_list_delete_modal %}
+            <sw-modal
+                v-if="hookToDelete"
+                :title="$t('muwa-agent.hook.deleteConfirmTitle')"
+                variant="small"
+                @modal-close="hookToDelete = null"
+            >
+                <p>
+                    {{ $t('muwa-agent.hook.deleteConfirmText', {
+                        repository: nameOf('repositories', hookToDelete.facilityRepositoryId),
+                        phase: $t(`muwa-agent.hook.phases.${hookToDelete.phase}`)
+                    }) }}
+                </p>
+
+                <template #modal-footer>
+                    <sw-button
+                        size="small"
+                        :disabled="isDeleting"
+                        @click="hookToDelete = null"
+                    >
+                        {{ $t('global.default.cancel') }}
+                    </sw-button>
+                    <sw-button
+                        size="small"
+                        variant="danger"
+                        :is-loading="isDeleting"
+                        @click="onConfirmDelete"
+                    >
+                        {{ $t('global.default.delete') }}
+                    </sw-button>
+                </template>
+            </sw-modal>
+        {% endblock %}
+
+        {% block muwa_agent_hook_list_edit_modal %}
+            <muwa-agent-hook-modal
+                v-if="editedHook"
+                :hook="editedHook"
+                :facility-repositories="facilityRepositories"
+                :hosts="hosts"
+                :actions="actions"
+                @saved="onSaved"
+                @close="editedHook = null"
+            />
+        {% endblock %}
+    </div>
+{% endblock %}

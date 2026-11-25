@@ -8,9 +8,20 @@
 # defined here. Adjust the values to the host before use.
 version: 1
 
+services:
+  # A stop succeeds only once the unit is inactive and its cgroup is empty,
+  # so the Jellyfin SQLite database is quiescent during the backup.
+  jellyfin:
+    unit: jellyfin.service
+    stopTimeoutSeconds: 30
+    startTimeoutSeconds: 120
+    requireEmptyCgroupAfterStop: true
+
 containers:
   bitwarden-mssql:
     name: bitwarden-mssql
+  immich-postgres:
+    name: immich_postgres
 
 commands:
   # Creates a full MSSQL backup (.BAK) below bwdata/mssql/backups.
@@ -18,11 +29,69 @@ commands:
     containerAlias: bitwarden-mssql
     argv: [/backup-db.sh]
     timeoutSeconds: 600
+  # Online-consistent dump of the Immich database to stdout; the agent
+  # compresses it itself. Database and user are DB_DATABASE_NAME and
+  # DB_USERNAME of the Immich .env; authentication is the container's own.
+  immich-pg-dump:
+    containerAlias: immich-postgres
+    argv: [pg_dump, --clean, --if-exists, --dbname=immich, --username=postgres]
+    timeoutSeconds: 600
 
 paths:
   bitwarden-data:
     root: /opt/bitwarden
     recursive: true
+  jellyfin-data:
+    root: /var/lib/jellyfin
+    recursive: true
+  jellyfin-config:
+    root: /etc/jellyfin
+    recursive: true
+  # UPLOAD_LOCATION of the Immich .env. Thumbnails, encoded videos and
+  # profile images default to subdirectories of it; point the three aliases
+  # below to THUMB_LOCATION, ENCODED_VIDEO_LOCATION and PROFILE_LOCATION
+  # when those are set. DB_DATA_LOCATION is never a source while PostgreSQL
+  # runs, EXTERNAL_PATH is backed up with its own source.
+  immich-upload:
+    root: /opt/immich/library
+    recursive: true
+  immich-thumbs:
+    root: /opt/immich/library/thumbs
+    recursive: true
+  immich-encoded-video:
+    root: /opt/immich/library/encoded-video
+    recursive: true
+  immich-profile:
+    root: /opt/immich/library/profile
+    recursive: true
+  # Paperless-ngx data roots. The agent only verifies them; the database is
+  # saved by MuckiSafe's typed database backup, never by a host script.
+  paperless-data:
+    root: /data/dokumente/data
+    recursive: true
+  paperless-media:
+    root: /data/dokumente/media
+    recursive: true
+  paperless-export:
+    root: /data/dokumente/export
+    recursive: true
+  paperless-consume:
+    root: /data/dokumente/consume
+    recursive: true
+
+destinations:
+  # Manual database dumps of the agent, kept apart from Immich's automatic
+  # immich-db-backup-* files, which retention never touches.
+  immich-manual-backups:
+    pathAlias: immich-upload
+    directory: backups
+    prefix: immich-db-dump-manual-
+    suffix: .sql.gz
+    owner: 33
+    group: 33
+    mode: "0640"
+    maximumBytes: 21474836480
+    maximumKeep: 10
 
 principals:
   # The user the MuckiSafe container reads backup sources as (www-data).
@@ -51,6 +120,58 @@ checks:
       directory: bwdata/core/aspnet-dataprotection
       suffix: .xml
       minimumCount: 1
+  # Data directory and SQLite database of the stopped Jellyfin.
+  jellyfin-required-data:
+    pathAlias: jellyfin-data
+    readableBy: muckisafe-backup
+    relativePaths:
+      - .
+      - data
+      - data/jellyfin.db
+  jellyfin-required-config:
+    pathAlias: jellyfin-config
+    readableBy: muckisafe-backup
+    relativePaths:
+      - .
+  immich-upload-required-readable:
+    pathAlias: immich-upload
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-thumbs-required-readable:
+    pathAlias: immich-thumbs
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-encoded-video-required-readable:
+    pathAlias: immich-encoded-video
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-profile-required-readable:
+    pathAlias: immich-profile
+    readableBy: muckisafe-backup
+    recursive: true
+  # The non-empty dump this run published, by its manifest identity.
+  immich-current-run-output:
+    destinationAlias: immich-manual-backups
+    readableBy: muckisafe-backup
+    minimumSize: 1
+  # The Paperless action grants no read ACL: the roots must already be
+  # readable by the backup principal.
+  paperless-data-required-readable:
+    pathAlias: paperless-data
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-media-required-readable:
+    pathAlias: paperless-media
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-export-required-readable:
+    pathAlias: paperless-export
+    readableBy: muckisafe-backup
+    recursive: true
+  paperless-consume-required-readable:
+    pathAlias: paperless-consume
+    readableBy: muckisafe-backup
+    recursive: true
 
 endpoints:
   # Optional health probe for a post action; replace host and address range.
@@ -63,3 +184,20 @@ endpoints:
     maximumBodyBytes: 65536
     jsonFields:
       version: "2026.10.1"
+  # Readiness of the restarted Jellyfin in the finally action.
+  jellyfin-public-info:
+    url: http://127.0.0.1:8096/System/Info/Public
+    expectedStatuses: [200]
+    allowedIpRanges: [127.0.0.0/8]
+    timeoutSeconds: 120
+    intervalSeconds: 1
+  # Paperless web after the backup: 200, or exactly its login redirect.
+  paperless-web:
+    url: http://127.0.0.1:8091/
+    expectedStatuses: [200, 302]
+    allowedIpRanges: [127.0.0.0/8]
+    timeoutSeconds: 120
+    intervalSeconds: 2
+    maximumBodyBytes: 65536
+    locations:
+      302: /accounts/login/?next=/

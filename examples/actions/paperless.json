@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-data-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-media-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-export-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "paperless-consume-required-readable"
+    }
+  ]
+}

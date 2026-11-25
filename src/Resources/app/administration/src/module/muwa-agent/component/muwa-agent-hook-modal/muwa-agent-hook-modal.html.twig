@@ -1,0 +1,96 @@
+{% block muwa_agent_hook_modal %}
+    {# No help-text tooltips inside this modal: in 6.7 their mt-tooltip breaks the next render after the modal closes. #}
+    <sw-modal
+        class="muwa-agent-hook-modal"
+        :title="isNew ? $t('muwa-agent.hook.createTitle') : $t('muwa-agent.hook.editTitle')"
+        variant="default"
+        @modal-close="$emit('close')"
+    >
+        <sw-single-select
+            v-model:value="form.facilityRepositoryId"
+            :options="repositoryOptions"
+            :label="$t('muwa-agent.hook.repositoryLabel')"
+            :disabled="!isNew"
+            required
+        />
+
+        <sw-single-select
+            v-model:value="form.phase"
+            :options="phaseOptions"
+            :label="$t('muwa-agent.hook.phaseLabel')"
+            :disabled="!isNew"
+            required
+        />
+        <p class="muwa-agent-hook-modal__hint">{{ $t('muwa-agent.hook.phaseHelp') }}</p>
+
+        <sw-alert
+            v-if="legacyHookFields.length > 0"
+            variant="warning"
+            :title="$t('muwa-agent.hook.legacyConflictTitle')"
+        >
+            {{ $t('muwa-agent.hook.legacyConflictText', { fields: legacyHookFields.map(legacyFieldLabel).join(', ') }) }}
+        </sw-alert>
+
+        <sw-single-select
+            v-model:value="form.agentHostId"
+            :options="hostOptions"
+            :label="$t('muwa-agent.hook.agentLabel')"
+            required
+        />
+
+        <sw-single-select
+            v-model:value="form.agentActionId"
+            :options="actionOptions"
+            :label="$t('muwa-agent.hook.actionLabel')"
+            required
+        />
+
+        <sw-alert
+            v-if="missingCapabilities.length > 0"
+            variant="warning"
+            :title="$t('muwa-agent.hook.capabilityMismatchTitle')"
+        >
+            {{ $t('muwa-agent.hook.capabilityMismatchText', { capabilities: missingCapabilities.join(', ') }) }}
+        </sw-alert>
+
+        <sw-number-field
+            v-model:value="form.timeoutSeconds"
+            number-type="int"
+            :min="minBudget"
+            :max="maxBudget"
+            :label="$t('muwa-agent.hook.timeoutSecondsLabel')"
+            required
+        />
+        <p class="muwa-agent-hook-modal__hint">{{ $t('muwa-agent.hook.timeoutSecondsHelp', { min: minBudget, max: maxBudget }) }}</p>
+
+        <sw-switch-field
+            v-model:value="form.failOnError"
+            :label="$t('muwa-agent.hook.failOnErrorLabel')"
+        />
+        <p class="muwa-agent-hook-modal__hint">{{ $t('muwa-agent.hook.failOnErrorHelp') }}</p>
+
+        <sw-switch-field
+            v-model:value="form.enabled"
+            :label="$t('muwa-agent.hook.enabledLabel')"
+        />
+
+        <template #modal-footer>
+            <sw-button
+                size="small"
+                :disabled="isSaving"
+                @click="$emit('close')"
+            >
+                {{ $t('global.default.cancel') }}
+            </sw-button>
+            <sw-button
+                size="small"
+                variant="primary"
+                :disabled="!isComplete"
+                :is-loading="isSaving"
+                @click="onSave"
+            >
+                {{ $t('global.default.save') }}
+            </sw-button>
+        </template>
+    </sw-modal>
+{% endblock %}

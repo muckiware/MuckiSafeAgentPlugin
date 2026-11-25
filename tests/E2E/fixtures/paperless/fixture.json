@@ -1,0 +1,146 @@
+{
+  "fixtureVersion": 1,
+  "service": "paperless",
+  "contract": "tests/E2E/contracts/paperless.json",
+  "actions": {
+    "pre": "examples/actions/paperless.json",
+    "post": "examples/actions/paperless-post.json"
+  },
+  "policy": "examples/policies/linux-host.yaml",
+  "policyRoots": {
+    "/data/dokumente/data": "data",
+    "/data/dokumente/media": "media",
+    "/data/dokumente/export": "export",
+    "/data/dokumente/consume": "consume"
+  },
+  "policyOrigin": "http://127.0.0.1:8091",
+  "description": "Pre and post phase of the Paperless reference action against seeded data roots owned by the Paperless user (USERMAP_UID 1000). The agent only verifies readability and web health; the database export and the file backup are MuckiSafe's typed core operations, simulated between pre and post. Post runs only after a successful core, as Facility dispatches its after-event only then. The legacy paperless_pre.sh is never executed. The agent reference test (agent/internal/primitives/reference_paperless_test.go) replays every scenario; the live E2E of Task 32 replays them against the pinned Paperless stack.",
+  "legacyHook": {
+    "command": "/bin/bash",
+    "arguments": ["/scripts/paperless_pre.sh"],
+    "observedStderr": "/scripts/paperless_pre.sh: line 8: 2: unbound variable",
+    "forbiddenInPolicyAndActions": ["paperless_pre.sh", "/bin/bash", "/scripts/"]
+  },
+  "seed": {
+    "directories": [
+      {"path": "data", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "data/index", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "media", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "media/documents", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "media/documents/originals", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "media/documents/archive", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "export", "mode": "0755", "uid": 1000, "gid": 1000},
+      {"path": "consume", "mode": "0755", "uid": 1000, "gid": 1000}
+    ],
+    "files": [
+      {"path": "data/celerybeat-schedule.db", "mode": "0644", "uid": 1000, "gid": 1000, "content": "schedule fixture"},
+      {"path": "data/index/MAIN_1.toc", "mode": "0644", "uid": 1000, "gid": 1000, "content": "whoosh fixture"},
+      {"path": "media/documents/originals/0000001.pdf", "mode": "0644", "uid": 1000, "gid": 1000, "content": "%PDF-1.7 fixture"},
+      {"path": "media/documents/archive/0000001.pdf", "mode": "0644", "uid": 1000, "gid": 1000, "content": "%PDF-1.7 archive fixture"},
+      {"path": "export/manifest.json", "mode": "0644", "uid": 1000, "gid": 1000, "content": "[]"},
+      {"path": "consume/incoming.pdf", "mode": "0644", "uid": 1000, "gid": 1000, "content": "%PDF-1.7 incoming"}
+    ]
+  },
+  "core": {
+    "operations": ["muckisafe.database-backup", "muckisafe.backup"],
+    "readableBy": {"uid": 33, "gid": 33},
+    "sources": ["/data/dokumente/data", "/data/dokumente/media", "/data/dokumente/export", "/data/dokumente/consume"]
+  },
+  "scenarios": [
+    {
+      "name": "success with the login redirect",
+      "inject": {},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "readable",
+        "post": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "1 steps completed"}
+      }
+    },
+    {
+      "name": "success with HTTP 200",
+      "inject": {},
+      "web": {"status": 200},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "readable",
+        "post": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "1 steps completed"}
+      }
+    },
+    {
+      "name": "export fails in the core backup",
+      "inject": {"coreFails": true},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "failed",
+        "post": null
+      }
+    },
+    {
+      "name": "media original not readable",
+      "inject": {"unreadable": "media/documents/originals/0000001.pdf"},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 2 (filesystem.assert-readable)"},
+        "core": "skipped",
+        "post": null
+      }
+    },
+    {
+      "name": "data index not readable",
+      "inject": {"unreadable": "data/index"},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[verification_failed] step 1 (filesystem.assert-readable)"},
+        "core": "skipped",
+        "post": null
+      }
+    },
+    {
+      "name": "consume root missing",
+      "inject": {"remove": "consume"},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 4 (filesystem.assert-readable)"},
+        "core": "skipped",
+        "post": null
+      }
+    },
+    {
+      "name": "symlink in the export is not followed",
+      "inject": {"symlink": {"path": "export/escape", "target": "/etc"}},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "readable",
+        "post": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "1 steps completed"}
+      }
+    },
+    {
+      "name": "redirect to another location",
+      "inject": {},
+      "web": {"status": 302, "location": "/setup/"},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "readable",
+        "post": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[endpoint_failed] step 1 (service.wait-http)"}
+      }
+    },
+    {
+      "name": "repeated pre and post",
+      "inject": {"runs": 2},
+      "web": {"status": 302, "location": "/accounts/login/?next=/"},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "4 steps completed"},
+        "core": "readable",
+        "post": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "1 steps completed"}
+      }
+    }
+  ],
+  "cleanup": {
+    "agentEffects": "none: no process is started, no file, mode or ACL changes",
+    "endState": "seed tree, modes and ACLs exactly as before the run; nothing to remove",
+    "repositoryArtifacts": "removed by the live E2E by artifact id only (contract cleanup.testOnly)"
+  }
+}

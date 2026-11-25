@@ -1,0 +1,167 @@
+{% block muwa_agent_action_detail %}
+    <sw-page class="muwa-agent-action-detail">
+        {% block muwa_agent_action_detail_smart_bar_header %}
+            <template #smart-bar-header>
+                <h2>{{ isNew ? $t('muwa-agent.action.createTitle') : action.label }}</h2>
+            </template>
+        {% endblock %}
+
+        {% block muwa_agent_action_detail_smart_bar_actions %}
+            <template #smart-bar-actions>
+                <sw-button :router-link="{ name: 'muwa.agent.index.actions' }">
+                    {{ $t('global.default.cancel') }}
+                </sw-button>
+
+                <sw-button-process
+                    variant="primary"
+                    :is-loading="isLoading"
+                    :process-success="processSuccess"
+                    :disabled="!canEdit"
+                    @process-finish="saveFinish"
+                    @click="onSave"
+                >
+                    {{ $t('global.default.save') }}
+                </sw-button-process>
+            </template>
+        {% endblock %}
+
+        <template #content>
+            {% block muwa_agent_action_detail_content %}
+                <sw-card-view>
+                    {% block muwa_agent_action_detail_general %}
+                        <sw-card
+                            position-identifier="muwaAgentActionGeneral"
+                            :title="$t('muwa-agent.action.generalCardTitle')"
+                            :is-loading="isLoading"
+                        >
+                            <sw-text-field
+                                v-model:value="action.label"
+                                :label="$t('muwa-agent.action.labelLabel')"
+                                :error="fieldError('label')"
+                                :disabled="!canEdit"
+                                maxlength="255"
+                                required
+                            />
+
+                            <sw-text-field
+                                v-model:value="action.technicalName"
+                                :label="$t('muwa-agent.action.technicalNameLabel')"
+                                :help-text="$t('muwa-agent.action.technicalNameHelp')"
+                                :error="fieldError('technicalName')"
+                                :disabled="!canEdit || !isNew"
+                                maxlength="64"
+                                required
+                            />
+
+                            <sw-switch-field
+                                v-model:value="action.enabled"
+                                :label="$t('muwa-agent.action.enabledLabel')"
+                                :disabled="!canEdit"
+                            />
+
+                            <sw-single-select
+                                v-model:value="action.idempotencyClass"
+                                :options="idempotencyOptions"
+                                :label="$t('muwa-agent.action.idempotencyClassLabel')"
+                                :help-text="$t('muwa-agent.action.idempotencyClassHelp')"
+                                :error="fieldError('idempotencyClass')"
+                                :disabled="!canEdit"
+                                required
+                            />
+
+                            <sw-text-field
+                                :value="retryPolicyText"
+                                :label="$t('muwa-agent.action.retryPolicyLabel')"
+                                disabled
+                            />
+
+                            <sw-container
+                                columns="1fr 1fr"
+                                gap="0 30px"
+                            >
+                                <sw-number-field
+                                    v-model:value="action.defaultTimeoutSeconds"
+                                    number-type="int"
+                                    :min="45"
+                                    :max="1800"
+                                    :label="$t('muwa-agent.action.defaultTimeoutSecondsLabel')"
+                                    :error="fieldError('defaultTimeoutSeconds')"
+                                    :disabled="!canEdit"
+                                    required
+                                />
+                                <sw-number-field
+                                    v-model:value="action.maxTimeoutSeconds"
+                                    number-type="int"
+                                    :min="45"
+                                    :max="1800"
+                                    :label="$t('muwa-agent.action.maxTimeoutSecondsLabel')"
+                                    :help-text="$t('muwa-agent.action.maxTimeoutSecondsHelp')"
+                                    :error="fieldError('maxTimeoutSeconds')"
+                                    :disabled="!canEdit"
+                                    required
+                                />
+                            </sw-container>
+                        </sw-card>
+                    {% endblock %}
+
+                    {% block muwa_agent_action_detail_definition %}
+                        <sw-card
+                            position-identifier="muwaAgentActionDefinition"
+                            :title="$t('muwa-agent.action.definitionCardTitle')"
+                            :is-loading="isLoading"
+                        >
+                            <p class="muwa-agent-action-detail__hint">
+                                {{ $t('muwa-agent.action.definitionHint') }}
+                            </p>
+
+                            {# 6.6 emits update:value, the 6.7 wrapper only update:modelValue #}
+                            <sw-textarea-field
+                                :value="definitionText"
+                                :model-value="definitionText"
+                                @update:value="definitionText = $event"
+                                @update:model-value="definitionText = $event"
+                                class="muwa-agent-action-detail__definition"
+                                :label="$t('muwa-agent.action.definitionLabel')"
+                                :disabled="!canEdit"
+                                spellcheck="false"
+                            />
+
+                            <sw-alert
+                                v-if="definitionError"
+                                variant="error"
+                                :title="$t('muwa-agent.action.definitionErrorTitle')"
+                            >
+                                <code>{{ definitionError }}</code>
+                            </sw-alert>
+
+                            <sw-alert
+                                v-else-if="validation"
+                                variant="success"
+                                :title="$t('muwa-agent.action.validationSuccessTitle')"
+                            >
+                                <div>{{ $t('muwa-agent.action.requiredCapabilitiesLabel') }}: {{ validation.requiredCapabilities.join(', ') }}</div>
+                                <div>{{ $t('muwa-agent.action.hashLabel') }}: <code>{{ validation.hash }}</code></div>
+                            </sw-alert>
+
+                            <div
+                                v-else-if="!isNew && action.requiredCapabilities.length > 0"
+                                class="muwa-agent-action-detail__hint"
+                            >
+                                {{ $t('muwa-agent.action.requiredCapabilitiesLabel') }}: {{ action.requiredCapabilities.join(', ') }}
+                            </div>
+
+                            <sw-button
+                                size="small"
+                                :is-loading="isValidating"
+                                :disabled="!canEdit"
+                                @click="onValidate"
+                            >
+                                {{ $t('muwa-agent.action.validateButton') }}
+                            </sw-button>
+                        </sw-card>
+                    {% endblock %}
+                </sw-card-view>
+            {% endblock %}
+        </template>
+    </sw-page>
+{% endblock %}

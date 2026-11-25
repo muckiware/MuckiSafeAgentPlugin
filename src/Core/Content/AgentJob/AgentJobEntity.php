@@ -338,4 +338,20 @@ final class AgentJobEntity extends Entity
     {
         $this->stderrTail = $stderrTail;
     }
+
+    /**
+     * The plain JSON API encodes the whole struct before removing fields that
+     * are not ApiAware; raw hash bytes would abort that encoding. Failure tails
+     * are dropped as well so no serialization path can expose them; they are
+     * served only by the executor output route.
+     *
+     * @return array<string, mixed>
+     */
+    public function jsonSerialize(): array
+    {
+        $data = parent::jsonSerialize();
+        unset($data['actionHash'], $data['completionFingerprint'], $data['stdoutTail'], $data['stderrTail']);
+
+        return $data;
+    }
 }

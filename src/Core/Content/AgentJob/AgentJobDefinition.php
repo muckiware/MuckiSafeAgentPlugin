@@ -22,6 +22,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\Field\BlobField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\DateTimeField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\FkField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
 
@@ -60,7 +61,8 @@ final class AgentJobDefinition extends EntityDefinition
             (new IdField('facility_repository_id', 'facilityRepositoryId'))->addFlags(new Required(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('phase', 'phase'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new LongTextField('action_definition', 'actionDefinition'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
-            (new BlobField('action_hash', 'actionHash'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
+            // Raw hash bytes cannot be JSON-encoded by the API.
+            (new BlobField('action_hash', 'actionHash'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE))->removeFlag(ApiAware::class),
             (new LongTextField('payload', 'payload'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('idempotency_class', 'idempotencyClass'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('idempotency_key', 'idempotencyKey'))->addFlags(new Required(), new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
@@ -77,13 +79,14 @@ final class AgentJobDefinition extends EntityDefinition
             (new DateTimeField('lease_expires_at', 'leaseExpiresAt'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
             (new DateTimeField('heartbeat_at', 'heartbeatAt'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
             (new DateTimeField('finished_at', 'finishedAt'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
-            (new BlobField('completion_fingerprint', 'completionFingerprint'))->addFlags(new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
+            (new BlobField('completion_fingerprint', 'completionFingerprint'))->addFlags(new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE))->removeFlag(ApiAware::class),
             (new FkField('completion_agent_id', 'completionAgentId', AgentHostDefinition::class))->addFlags(new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new IntField('accepted_lease_version', 'acceptedLeaseVersion'))->addFlags(new Immutable(), new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('result_code', 'resultCode'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
             (new StringField('result_summary', 'resultSummary'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
-            (new LongTextField('stdout_tail', 'stdoutTail'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
-            (new LongTextField('stderr_tail', 'stderrTail'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE)),
+            // Failure tails are served only by the muwa_agent.executor output route, never by the generic API.
+            (new LongTextField('stdout_tail', 'stdoutTail'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE))->removeFlag(ApiAware::class),
+            (new LongTextField('stderr_tail', 'stderrTail'))->addFlags(new WriteProtected(Context::SYSTEM_SCOPE))->removeFlag(ApiAware::class),
             new CreatedAtField(),
             new UpdatedAtField(),
         ]);

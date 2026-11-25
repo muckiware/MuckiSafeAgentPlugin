@@ -25,18 +25,15 @@ import (
 const repositoryRoot = "../../.."
 
 type referenceFixture struct {
-	FixtureVersion int    `json:"fixtureVersion"`
-	Service        string `json:"service"`
-	Contract       string `json:"contract"`
-	Action         string `json:"action"`
-	Policy         string `json:"policy"`
-	PolicyRoot     string `json:"policyRoot"`
-	Description    string `json:"description"`
-	Seed           struct {
-		Directories []seedEntry `json:"directories"`
-		Files       []seedEntry `json:"files"`
-	} `json:"seed"`
-	BackupCommand struct {
+	FixtureVersion int           `json:"fixtureVersion"`
+	Service        string        `json:"service"`
+	Contract       string        `json:"contract"`
+	Action         string        `json:"action"`
+	Policy         string        `json:"policy"`
+	PolicyRoot     string        `json:"policyRoot"`
+	Description    string        `json:"description"`
+	Seed           referenceSeed `json:"seed"`
+	BackupCommand  struct {
 		ContainerAlias string   `json:"containerAlias"`
 		CommandAlias   string   `json:"commandAlias"`
 		Container      string   `json:"container"`
@@ -59,6 +56,11 @@ type referenceFixture struct {
 	Cleanup   json.RawMessage     `json:"cleanup"`
 }
 
+type referenceSeed struct {
+	Directories []seedEntry `json:"directories"`
+	Files       []seedEntry `json:"files"`
+}
+
 type seedEntry struct {
 	Path    string `json:"path"`
 	Mode    string `json:"mode"`
@@ -70,14 +72,11 @@ type seedEntry struct {
 type referenceScenario struct {
 	Name   string `json:"name"`
 	Inject struct {
-		CommandExit   int    `json:"commandExit"`
-		Artifact      string `json:"artifact"`
-		ArtifactBytes *int   `json:"artifactBytes"`
-		Remove        string `json:"remove"`
-		Symlink       *struct {
-			Path   string `json:"path"`
-			Target string `json:"target"`
-		} `json:"symlink"`
+		CommandExit   int               `json:"commandExit"`
+		Artifact      string            `json:"artifact"`
+		ArtifactBytes *int              `json:"artifactBytes"`
+		Remove        string            `json:"remove"`
+		Symlink       *symlinkInjection `json:"symlink"`
 	} `json:"inject"`
 	Expect struct {
 		Outcome       string `json:"outcome"`
@@ -87,7 +86,20 @@ type referenceScenario struct {
 	} `json:"expect"`
 }
 
+type symlinkInjection struct {
+	Path   string `json:"path"`
+	Target string `json:"target"`
+}
+
 func loadReference(t *testing.T, service string) referenceFixture {
+	t.Helper()
+	var fixture referenceFixture
+	decodeFixture(t, service, &fixture)
+	return fixture
+}
+
+// decodeFixture strictly decodes tests/E2E/fixtures/<service>/fixture.json.
+func decodeFixture(t *testing.T, service string, fixture any) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(repositoryRoot, "tests/E2E/fixtures", service, "fixture.json"))
 	if err != nil {
@@ -95,11 +107,9 @@ func loadReference(t *testing.T, service string) referenceFixture {
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	var fixture referenceFixture
-	if err := decoder.Decode(&fixture); err != nil {
+	if err := decoder.Decode(fixture); err != nil {
 		t.Fatal(err)
 	}
-	return fixture
 }
 
 func readRepositoryFile(t *testing.T, path string) string {
@@ -122,16 +132,16 @@ func octal(t *testing.T, mode string) os.FileMode {
 
 // seedTree creates the fixture tree below root as root-owned objects unless
 // the entry names another owner.
-func seedTree(t *testing.T, root string, fixture referenceFixture) {
+func seedTree(t *testing.T, root string, seed referenceSeed) {
 	t.Helper()
-	for _, dir := range fixture.Seed.Directories {
+	for _, dir := range seed.Directories {
 		path := filepath.Join(root, dir.Path)
 		if err := os.Mkdir(path, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		chownChmod(t, path, dir)
 	}
-	for _, file := range fixture.Seed.Files {
+	for _, file := range seed.Files {
 		path := filepath.Join(root, file.Path)
 		if err := os.WriteFile(path, []byte(file.Content), 0o600); err != nil {
 			t.Fatal(err)
@@ -171,8 +181,8 @@ func runBitwardenScenario(t *testing.T, fixture referenceFixture, definition str
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	seedTree(t, root, fixture)
-	inject(t, root, scenario)
+	seedTree(t, root, fixture.Seed)
+	inject(t, root, scenario.Inject.Remove, scenario.Inject.Symlink)
 	start := snapshotTree(t, root)
 	artifactDir := fixture.BackupCommand.Artifact.Directory
 	before := directoryIdentities(t, root, artifactDir)
@@ -205,14 +215,18 @@ func runBitwardenScenario(t *testing.T, fixture referenceFixture, definition str
 	}
 }
 
-func inject(t *testing.T, root string, scenario referenceScenario) {
+func inject(t *testing.T, root, remove string, link *symlinkInjection) {
 	t.Helper()
-	if scenario.Inject.Remove != "" {
-		if err := os.Remove(filepath.Join(root, scenario.Inject.Remove)); err != nil {
+	if remove != "" {
+		// Lstat keeps a misspelled path from passing silently
+		if _, err := os.Lstat(filepath.Join(root, remove)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(root, remove)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if link := scenario.Inject.Symlink; link != nil {
+	if link != nil {
 		if err := os.RemoveAll(filepath.Join(root, link.Path)); err != nil {
 			t.Fatal(err)
 		}
@@ -458,7 +472,7 @@ func TestBitwardenCleanupDeletesNothingOnAnIdentityMismatch(t *testing.T) {
 	fixture := loadReference(t, "bitwarden")
 	root := filepath.Join(tempDir(t), "bitwarden")
 	os.Mkdir(root, 0o755)
-	seedTree(t, root, fixture)
+	seedTree(t, root, fixture.Seed)
 	start := snapshotTree(t, root)
 	artifactDir := fixture.BackupCommand.Artifact.Directory
 	before := directoryIdentities(t, root, artifactDir)
