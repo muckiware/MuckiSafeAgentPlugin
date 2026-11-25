@@ -7,7 +7,8 @@
     "tabs": {
       "hosts": "Agenten",
       "actions": "Actions",
-      "hooks": "Repository-Hooks"
+      "hooks": "Repository-Hooks",
+      "runs": "Runs & Jobs"
     },
     "host": {
       "nameLabel": "Name",
@@ -62,7 +63,8 @@
       "agent_unavailable": "Der Ziel-Agent ist widerrufen, deaktiviert oder existiert nicht.",
       "capability_missing": "Dem Ziel-Agenten fehlt eine Capability, die die Action benötigt.",
       "action_unavailable": "Die Action ist deaktiviert oder existiert nicht.",
-      "hook_not_found": "Der Hook existiert nicht mehr."
+      "hook_not_found": "Der Hook existiert nicht mehr.",
+      "job_not_found": "Der Job existiert nicht mehr."
     },
     "action": {
       "createButton": "Action anlegen",
@@ -141,6 +143,54 @@
       "deleteSuccess": "Der Hook wurde gelöscht.",
       "deleteConfirmTitle": "Hook löschen",
       "deleteConfirmText": "Der Hook für „{repository}“ in der Phase {phase} wird gelöscht. Bereits erzeugte Jobs bleiben erhalten."
+    },
+    "run": {
+      "emptyState": "Es gibt noch keine Backup-Runs mit Agent-Hooks.",
+      "startedAtLabel": "Gestartet",
+      "statusLabel": "Status",
+      "durationLabel": "Dauer",
+      "primaryErrorLabel": "Primärfehler",
+      "showJobs": "Jobs anzeigen",
+      "modalTitle": "Run „{repository}“ vom {date}",
+      "noJobs": "Für diesen Run wurden keine Jobs erzeugt.",
+      "statuses": {
+        "running": "Läuft",
+        "succeeded": "Erfolgreich",
+        "failed": "Fehlgeschlagen",
+        "unknown": "Unbekannt"
+      }
+    },
+    "job": {
+      "attemptLabel": "Versuch",
+      "resultLabel": "Ergebnis",
+      "showOutput": "Fehlerausgabe anzeigen",
+      "outputRequiresExecutor": "Die Fehlerausgabe (stdout/stderr) ist nur mit der Rolle „Executor“ sichtbar.",
+      "noOutput": "(leer)",
+      "statuses": {
+        "queued": "Wartend",
+        "claimed": "Übernommen",
+        "running": "Läuft",
+        "cancel_requested": "Abbruch angefordert",
+        "succeeded": "Erfolgreich",
+        "failed": "Fehlgeschlagen",
+        "timed_out": "Zeitüberschreitung",
+        "expired": "Abgelaufen",
+        "unknown": "Unbekannt"
+      }
+    }
+  },
+  "sw-privileges": {
+    "permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent"
+      }
+    },
+    "additional_permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent",
+        "provisioner": "Agenten provisionieren, Secrets rotieren und Agenten widerrufen",
+        "executor": "Fehlerausgaben (stdout/stderr) fehlgeschlagener Jobs lesen"
+      }
     }
   }
 }

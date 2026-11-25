@@ -4,6 +4,9 @@
  * role are the generic DAL read privileges and the dedicated route privileges
  * the role bundles. Writes on agent entities are never granted through the
  * generic DAL; the server rejects them independently of these roles.
+ *
+ * The permission grid only offers viewer/editor/creator/deleter columns, so
+ * provisioner and executor are additional permissions of the same key.
  */
 Shopware.Service('privileges').addPrivilegeMappingEntry({
     category: 'permissions',
@@ -15,6 +18,8 @@ Shopware.Service('privileges').addPrivilegeMappingEntry({
                 'muwa_agent_host:read',
                 'muwa_agent_action:read',
                 'muwa_agent_repository_hook:read',
+                'muwa_agent_backup_run:read',
+                'muwa_agent_job:read',
                 // Facility repositories are read through the Facility entity (name and legacy hook types).
                 'muwa_backup_repository:read',
             ],
@@ -26,6 +31,14 @@ Shopware.Service('privileges').addPrivilegeMappingEntry({
                 'muwa_agent.viewer',
             ],
         },
+    },
+});
+
+Shopware.Service('privileges').addPrivilegeMappingEntry({
+    category: 'additional_permissions',
+    parent: null,
+    key: 'muwa_agent',
+    roles: {
         provisioner: {
             privileges: [
                 'muwa_agent.provision',
@@ -33,6 +46,13 @@ Shopware.Service('privileges').addPrivilegeMappingEntry({
                 'muwa_agent.revoke',
                 'muwa_agent.master_key_reencrypt',
             ],
+            dependencies: [
+                'muwa_agent.viewer',
+            ],
+        },
+        // Reads stdout/stderr failure tails through the dedicated output route.
+        executor: {
+            privileges: [],
             dependencies: [
                 'muwa_agent.viewer',
             ],

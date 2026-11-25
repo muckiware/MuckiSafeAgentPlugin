@@ -143,4 +143,18 @@ final class AgentActionEntity extends Entity
     {
         $this->idempotencyClass = $idempotencyClass;
     }
+
+    /**
+     * The plain JSON API encodes the whole struct before removing fields that
+     * are not ApiAware; raw hash bytes would abort that encoding.
+     *
+     * @return array<string, mixed>
+     */
+    public function jsonSerialize(): array
+    {
+        $data = parent::jsonSerialize();
+        unset($data['definitionHash']);
+
+        return $data;
+    }
 }

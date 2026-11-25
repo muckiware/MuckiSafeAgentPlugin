@@ -220,6 +220,11 @@ final class ActionControllerHttpTest extends TestCase
         self::assertSame('bitwarden-backup', $attributes['technicalName']);
         self::assertSame(['docker.container.exec', 'filesystem.acl.read', 'filesystem.assert-readable'], $attributes['requiredCapabilities']);
         self::assertArrayNotHasKey('definitionHash', $attributes);
+
+        $viewer->jsonRequest('POST', '/api/search/muwa-agent-action', ['ids' => [$id]], ['HTTP_ACCEPT' => 'application/json']);
+        $plain = $this->decoded($viewer, Response::HTTP_OK)['data'][0];
+        self::assertSame('bitwarden-backup', $plain['technicalName']);
+        self::assertArrayNotHasKey('definitionHash', $plain);
     }
 
     public function testGenericApiCannotWriteActionsEvenWithDalPrivileges(): void

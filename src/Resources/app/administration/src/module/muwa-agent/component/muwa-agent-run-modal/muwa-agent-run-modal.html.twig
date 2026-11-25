@@ -1,0 +1,103 @@
+{% block muwa_agent_run_modal %}
+    {# No help-text tooltips inside this modal: in 6.7 their mt-tooltip breaks the next render after the modal closes. #}
+    <sw-modal
+        class="muwa-agent-run-modal"
+        :title="$t('muwa-agent.run.modalTitle', { repository: repositoryName, date: formatDate(run.startedAt) })"
+        :is-loading="isLoading"
+        variant="large"
+        @modal-close="$emit('close')"
+    >
+        <div class="muwa-agent-run-modal__summary">
+            <sw-label
+                :variant="statusVariant(run.status)"
+                appearance="pill"
+            >
+                {{ $t(`muwa-agent.run.statuses.${run.status}`) }}
+            </sw-label>
+            <span>{{ $t('muwa-agent.run.durationLabel') }}: {{ formatDuration(run.startedAt, run.finishedAt) }}</span>
+            <span v-if="run.primaryErrorCode">
+                {{ $t('muwa-agent.run.primaryErrorLabel') }}: {{ run.primaryErrorCode }}<template v-if="run.primaryErrorSummary"> – {{ run.primaryErrorSummary }}</template>
+            </span>
+        </div>
+
+        <p
+            v-if="!isLoading && jobs.length === 0"
+            class="muwa-agent-run-modal__empty"
+        >
+            {{ $t('muwa-agent.run.noJobs') }}
+        </p>
+
+        <div
+            v-for="job in jobs"
+            :key="job.id"
+            class="muwa-agent-run-modal__job"
+        >
+            <div class="muwa-agent-run-modal__job-header">
+                <strong>{{ $t(`muwa-agent.hook.phases.${job.phase}`) }}</strong>
+                <sw-label
+                    :variant="statusVariant(job.status)"
+                    appearance="pill"
+                    size="small"
+                >
+                    {{ $t(`muwa-agent.job.statuses.${job.status}`) }}
+                </sw-label>
+            </div>
+
+            <dl class="muwa-agent-run-modal__facts">
+                <dt>{{ $t('muwa-agent.hook.agentLabel') }}</dt>
+                <dd>{{ hostNames[job.targetAgentId] ?? $t('muwa-agent.hook.unknownReference') }}</dd>
+                <dt>{{ $t('muwa-agent.hook.actionLabel') }}</dt>
+                <dd>{{ actionLabels[job.agentActionId] ?? $t('muwa-agent.hook.unknownReference') }}</dd>
+                <dt>{{ $t('muwa-agent.job.attemptLabel') }}</dt>
+                <dd>{{ job.attempt }} / {{ job.maxAttempts }}</dd>
+                <dt>{{ $t('muwa-agent.run.durationLabel') }}</dt>
+                <dd>{{ formatDuration(job.claimedAt, job.finishedAt) }}</dd>
+                <dt>{{ $t('muwa-agent.job.resultLabel') }}</dt>
+                <dd>
+                    {{ job.resultCode || '–' }}<template v-if="job.resultSummary"> – {{ job.resultSummary }}</template>
+                </dd>
+            </dl>
+
+            <template v-if="isFailed(job)">
+                <sw-button
+                    v-if="canReadOutput && !outputs[job.id]"
+                    size="x-small"
+                    :is-loading="loadingOutput === job.id"
+                    @click="onShowOutput(job)"
+                >
+                    {{ $t('muwa-agent.job.showOutput') }}
+                </sw-button>
+                <p
+                    v-else-if="!canReadOutput"
+                    class="muwa-agent-run-modal__hint"
+                >
+                    {{ $t('muwa-agent.job.outputRequiresExecutor') }}
+                </p>
+
+                <div v-if="outputs[job.id]">
+                    <p
+                        v-if="outputs[job.id].error"
+                        class="muwa-agent-run-modal__hint"
+                    >
+                        {{ $t('muwa-agent.errors.operation_failed') }}
+                    </p>
+                    <template v-else>
+                        <div class="muwa-agent-run-modal__stream">stdout</div>
+                        <pre class="muwa-agent-run-modal__tail">{{ outputs[job.id].stdoutTail || $t('muwa-agent.job.noOutput') }}</pre>
+                        <div class="muwa-agent-run-modal__stream">stderr</div>
+                        <pre class="muwa-agent-run-modal__tail">{{ outputs[job.id].stderrTail || $t('muwa-agent.job.noOutput') }}</pre>
+                    </template>
+                </div>
+            </template>
+        </div>
+
+        <template #modal-footer>
+            <sw-button
+                size="small"
+                @click="$emit('close')"
+            >
+                {{ $t('global.default.close') }}
+            </sw-button>
+        </template>
+    </sw-modal>
+{% endblock %}

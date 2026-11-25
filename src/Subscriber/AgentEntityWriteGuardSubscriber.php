@@ -13,7 +13,9 @@
 namespace MuckiSafeAgentPlugin\Subscriber;
 
 use MuckiSafeAgentPlugin\Core\Content\AgentAction\AgentActionDefinition;
+use MuckiSafeAgentPlugin\Core\Content\AgentBackupRun\AgentBackupRunDefinition;
 use MuckiSafeAgentPlugin\Core\Content\AgentHost\AgentHostDefinition;
+use MuckiSafeAgentPlugin\Core\Content\AgentJob\AgentJobDefinition;
 use MuckiSafeAgentPlugin\Core\Content\AgentNonce\AgentNonceDefinition;
 use MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook\AgentRepositoryHookDefinition;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
@@ -37,7 +39,9 @@ final class AgentEntityWriteGuardSubscriber implements EventSubscriberInterface
 
     private const GUARDED_ENTITIES = [
         AgentActionDefinition::ENTITY_NAME,
+        AgentBackupRunDefinition::ENTITY_NAME,
         AgentHostDefinition::ENTITY_NAME,
+        AgentJobDefinition::ENTITY_NAME,
         AgentNonceDefinition::ENTITY_NAME,
         AgentRepositoryHookDefinition::ENTITY_NAME,
     ];

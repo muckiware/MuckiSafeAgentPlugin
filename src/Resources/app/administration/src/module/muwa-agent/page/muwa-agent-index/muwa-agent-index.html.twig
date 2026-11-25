@@ -26,6 +26,11 @@
                                     {{ $t('muwa-agent.tabs.hooks') }}
                                 </sw-tabs-item>
                             {% endblock %}
+                            {% block muwa_agent_index_tab_runs %}
+                                <sw-tabs-item :route="{ name: 'muwa.agent.index.runs' }">
+                                    {{ $t('muwa-agent.tabs.runs') }}
+                                </sw-tabs-item>
+                            {% endblock %}
                         </sw-tabs>
                     {% endblock %}
 

@@ -48,6 +48,12 @@ export default class MuwaAgentApiService extends ApiService {
             .then((response) => ApiService.handleResponse(response));
     }
 
+    jobOutput(jobId) {
+        return this.httpClient
+            .get(`${this.getApiBasePath()}/job/${jobId}/output`, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
     validateAction(definition) {
         return this.httpClient
             .post(`${this.getApiBasePath()}/action/validate`, { definition }, { headers: this.getBasicHeaders() })

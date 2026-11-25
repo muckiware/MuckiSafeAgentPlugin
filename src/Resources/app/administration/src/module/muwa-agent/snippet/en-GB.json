@@ -7,7 +7,8 @@
     "tabs": {
       "hosts": "Agents",
       "actions": "Actions",
-      "hooks": "Repository hooks"
+      "hooks": "Repository hooks",
+      "runs": "Runs & jobs"
     },
     "host": {
       "nameLabel": "Name",
@@ -62,7 +63,8 @@
       "agent_unavailable": "The target agent is revoked, disabled or does not exist.",
       "capability_missing": "The target agent lacks a capability the action requires.",
       "action_unavailable": "The action is disabled or does not exist.",
-      "hook_not_found": "The hook no longer exists."
+      "hook_not_found": "The hook no longer exists.",
+      "job_not_found": "The job no longer exists."
     },
     "action": {
       "createButton": "Create action",
@@ -141,6 +143,54 @@
       "deleteSuccess": "The hook has been deleted.",
       "deleteConfirmTitle": "Delete hook",
       "deleteConfirmText": "The hook for \"{repository}\" in phase {phase} will be deleted. Jobs already created are kept."
+    },
+    "run": {
+      "emptyState": "There are no backup runs with agent hooks yet.",
+      "startedAtLabel": "Started",
+      "statusLabel": "Status",
+      "durationLabel": "Duration",
+      "primaryErrorLabel": "Primary error",
+      "showJobs": "Show jobs",
+      "modalTitle": "Run \"{repository}\" from {date}",
+      "noJobs": "No jobs were created for this run.",
+      "statuses": {
+        "running": "Running",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "unknown": "Unknown"
+      }
+    },
+    "job": {
+      "attemptLabel": "Attempt",
+      "resultLabel": "Result",
+      "showOutput": "Show error output",
+      "outputRequiresExecutor": "The error output (stdout/stderr) is visible with the \"Executor\" role only.",
+      "noOutput": "(empty)",
+      "statuses": {
+        "queued": "Queued",
+        "claimed": "Claimed",
+        "running": "Running",
+        "cancel_requested": "Cancel requested",
+        "succeeded": "Succeeded",
+        "failed": "Failed",
+        "timed_out": "Timed out",
+        "expired": "Expired",
+        "unknown": "Unknown"
+      }
+    }
+  },
+  "sw-privileges": {
+    "permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent"
+      }
+    },
+    "additional_permissions": {
+      "muwa_agent": {
+        "label": "Mucki Agent",
+        "provisioner": "Provision agents, rotate secrets and revoke agents",
+        "executor": "Read error output (stdout/stderr) of failed jobs"
+      }
     }
   }
 }

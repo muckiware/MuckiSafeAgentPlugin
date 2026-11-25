@@ -1,0 +1,74 @@
+{% block muwa_agent_run_list %}
+    <div class="muwa-agent-run-list">
+        {% block muwa_agent_run_list_grid %}
+            <sw-entity-listing
+                v-if="runs && runs.total > 0"
+                :is-loading="isLoading"
+                :items="runs"
+                :repository="runRepository"
+                :columns="columns"
+                :show-actions="true"
+                :show-selection="false"
+                :show-settings="false"
+                :allow-inline-edit="false"
+                identifier="muwa-agent-run-list"
+            >
+                <template #column-startedAt="{ item }">
+                    <a
+                        href="#"
+                        @click.prevent="selectedRun = item"
+                    >
+                        {{ formatDate(item.startedAt) }}
+                    </a>
+                </template>
+
+                <template #column-facilityRepositoryId="{ item }">
+                    {{ repositoryName(item) }}
+                </template>
+
+                <template #column-status="{ item }">
+                    <sw-label
+                        :variant="statusVariant(item.status)"
+                        appearance="pill"
+                        size="small"
+                    >
+                        {{ $t(`muwa-agent.run.statuses.${item.status}`) }}
+                    </sw-label>
+                </template>
+
+                <template #column-duration="{ item }">
+                    {{ formatDuration(item.startedAt, item.finishedAt) }}
+                </template>
+
+                <template #column-primaryErrorCode="{ item }">
+                    <span v-if="item.primaryErrorCode">
+                        {{ item.primaryErrorCode }}<template v-if="item.primaryErrorSummary">: {{ item.primaryErrorSummary }}</template>
+                    </span>
+                    <span v-else>–</span>
+                </template>
+
+                <template #actions="{ item }">
+                    <sw-context-menu-item @click="selectedRun = item">
+                        {{ $t('muwa-agent.run.showJobs') }}
+                    </sw-context-menu-item>
+                </template>
+            </sw-entity-listing>
+
+            <sw-empty-state
+                v-else-if="runs && !isLoading"
+                :title="$t('muwa-agent.run.emptyState')"
+                :absolute="false"
+                icon="regular-history"
+            />
+        {% endblock %}
+
+        {% block muwa_agent_run_list_modal %}
+            <muwa-agent-run-modal
+                v-if="selectedRun"
+                :run="selectedRun"
+                :repository-name="repositoryName(selectedRun)"
+                @close="selectedRun = null"
+            />
+        {% endblock %}
+    </div>
+{% endblock %}

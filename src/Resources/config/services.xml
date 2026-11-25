@@ -179,6 +179,11 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Action\ActionConfigurator"/>
             <tag name="controller.service_arguments"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Admin\JobOutputController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <tag name="controller.service_arguments"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\RepositoryHookController" public="true">
             <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Hook\RepositoryHookConfigurator"/>
