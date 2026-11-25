@@ -174,7 +174,7 @@ agent_package() {
             ;;
         release)
             local tarball=${MUWA_E2E_AGENT_TARBALL:-}
-            [ -f "$tarball" ] && [ -f "$tarball.sha256" ] || die "release mode needs MUWA_E2E_AGENT_TARBALL with its .sha256"
+            [[ -f $tarball && -f $tarball.sha256 ]] || die "release mode needs MUWA_E2E_AGENT_TARBALL with its .sha256"
             (cd "$(dirname -- "$tarball")" && sha256sum --check --strict "$(basename -- "$tarball").sha256")
             rm -rf "$WORK_DIR/agent"
             mkdir -p "$WORK_DIR/agent"

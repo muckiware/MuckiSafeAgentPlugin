@@ -718,7 +718,7 @@ immich_assert_dump() {
         assert_eq "$(jq 'length' <<<"$entry")" 0 "manifest entries of the current run" || return 1
         return 0
     fi
-    [ -f "$path" ] && [ ! -L "$path" ] || { log "assertion failed: dump $path missing"; return 1; }
+    [[ -f $path && ! -L $path ]] || { log "assertion failed: dump $path missing"; return 1; }
     assert_eq "$(stat -c '%u:%g %a %h' "$path")" \
         "$(jq -r '.dump | "\(.uid):\(.gid) \(.mode | ltrimstr("0")) 1"' "$(fixture_file)")" "dump owner, mode, links" || return 1
     gzip -t "$path" || { log "assertion failed: $path is no valid gzip"; return 1; }
@@ -829,7 +829,7 @@ immich_cleanup_run() {
     artifacts=$(immich_manifest_json | jq -c --argjson history "$history" '[.entries[] | select(.runId as $r | any($history[]; . == $r) | not)]')
     if [ "$(jq 'length' <<<"$artifacts")" -gt 0 ]; then
         run=$(immich_run_id) || { log "cleanup: dumps recorded without a run, deleting nothing"; return 1; }
-        [ -d "$dir" ] && [ ! -L "$dir" ] || { log "cleanup: $dir is not a directory, deleting nothing"; return 1; }
+        [[ -d $dir && ! -L $dir ]] || { log "cleanup: $dir is not a directory, deleting nothing"; return 1; }
     fi
     # Pass 1 checks every artifact, pass 2 deletes: a mismatch deletes nothing.
     for pass in check delete; do
@@ -850,7 +850,7 @@ immich_cleanup_run() {
     # path, mode and ACL of every non-symlink of the snapshot (awk: empty
     # fields would collapse in read with a tab IFS)
     while IFS=$'\t' read -r path mode acl; do
-        [ -e "$path" ] && [ ! -L "$path" ] || continue
+        [[ -e $path && ! -L $path ]] || continue
         if [ -z "$acl" ]; then
             setfacl -b "$path"
             chmod "$mode" "$path"
@@ -874,7 +874,7 @@ immich_prove_end_state() {
     while IFS= read -r name; do
         path=$(immich_dump_dir)/$name
         immich_in_snapshot "$start" "$path" || continue
-        [ ! -e "$path" ] && [ ! -L "$path" ] || continue
+        [[ ! -e $path && ! -L $path ]] || continue
         if jq -e --arg n "$name" 'any(.entries[]; .name == $n)' <<<"$manifest" >/dev/null; then
             log "end state: $name is gone but still recorded, it was not removed by retention"
             return 1

@@ -373,7 +373,7 @@ scenario_inject() {
     if [ "$command_exit" != 0 ]; then
         # The real command fails: BACKUP DATABASE of an offline database
         # errors out, /backup-db.sh exits 1 and creates no BAK.
-        [ "$command_exit" = 1 ] && [ "$artifact" = none ] ||
+        [[ $command_exit == 1 && $artifact == none ]] ||
             die "case '$name': only commandExit 1 without an artifact can be produced by the real command"
         bw_sql "ALTER DATABASE vault SET OFFLINE WITH ROLLBACK IMMEDIATE" >/dev/null
     elif [ "$artifact" = none ]; then
@@ -452,7 +452,7 @@ scenario_assert_effects() {
     fi
     path=$(jq -r '.remove // ""' <<<"$inject")
     if [ -n "$path" ]; then
-        [ ! -e "$(bw_root)/$path" ] && [ ! -L "$(bw_root)/$path" ] ||
+        [[ ! -e "$(bw_root)/$path" && ! -L "$(bw_root)/$path" ]] ||
             { log "assertion failed: $path was recreated"; return 1; }
     fi
     path=$(jq -r '.symlink.path // ""' <<<"$inject")
@@ -490,12 +490,12 @@ bw_cleanup_artifacts() {
     local dir list name identity type links size
     bw_assert_root_identity
     dir=$(bw_backups_dir)
-    [ -d "$dir" ] && [ ! -L "$dir" ] && [ "$(bw_identity "$dir")" = "$(cat "$(bw_state)/backups-dir-identity")" ] ||
+    [[ -d $dir && ! -L $dir && "$(bw_identity "$dir")" == "$(cat "$(bw_state)/backups-dir-identity")" ]] ||
         { log "identity mismatch: $dir was replaced; nothing is deleted"; return 1; }
     list=$(bw_state)/artifacts-$(date +%s).tsv
     bw_new_artifacts >"$list"
     while IFS=$'\t' read -r name identity type links size; do
-        [ "$type" = f ] && [ "$links" = 1 ] && [ -n "$name" ] && [[ $name != */* ]] ||
+        [[ $type == f && $links == 1 && -n $name && $name != */* ]] ||
             { log "identity mismatch: $name ($type, $links links) is no run artifact; nothing is deleted"; return 1; }
     done <"$list"
     while IFS=$'\t' read -r name identity type links size; do

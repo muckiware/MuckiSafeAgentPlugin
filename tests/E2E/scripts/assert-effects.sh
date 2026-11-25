@@ -60,7 +60,7 @@ assert_new_run() {
     local before now
     before=$(cat "$WORK_DIR/run-before-trigger" 2>/dev/null || true)
     now=$(latest_run_id)
-    [ -n "$now" ] && [ "$now" != "$before" ] ||
+    [[ -n $now && $now != "$before" ]] ||
         { log "assertion failed: the backup created no new agent run (latest: '${now:-none}')"; return 1; }
 }
 

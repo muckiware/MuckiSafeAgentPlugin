@@ -190,7 +190,7 @@ jf_invocation() {
 jf_leftover_count() {
     local group pids
     group=$(systemctl show -p ControlGroup --value "$JF_UNIT")
-    [ -n "$group" ] && [ -f "/sys/fs/cgroup$group/cgroup.procs" ] || { echo 0; return 0; }
+    [[ -n $group && -f /sys/fs/cgroup$group/cgroup.procs ]] || { echo 0; return 0; }
     pids=$(paste -sd, "/sys/fs/cgroup$group/cgroup.procs")
     [ -n "$pids" ] || { echo 0; return 0; }
     ps -o comm= -p "$pids" | grep -cx sleep || true

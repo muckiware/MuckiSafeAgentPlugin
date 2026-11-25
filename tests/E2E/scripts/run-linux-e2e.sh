@@ -25,7 +25,8 @@
 # container/agent logs, run/job states and file manifests to --out.
 
 # Steps and cases are invoked indirectly through check/infra.
-# shellcheck disable=SC2329
+# SC2317 (shellcheck < 0.11) and SC2329 (>= 0.11) are the same finding.
+# shellcheck disable=SC2317,SC2329
 set -euo pipefail
 
 SCRIPTS_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

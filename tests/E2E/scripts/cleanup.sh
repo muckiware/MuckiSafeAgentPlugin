@@ -44,7 +44,9 @@ remove_agent() {
 
 remove_trust() {
     rm -f /usr/local/share/ca-certificates/muwa-e2e.crt
-    command -v update-ca-certificates >/dev/null && update-ca-certificates --fresh >/dev/null 2>&1 || true
+    if command -v update-ca-certificates >/dev/null; then
+        update-ca-certificates --fresh >/dev/null 2>&1 || true
+    fi
     sed -i "/ $HTTPS_HOST\$/d" /etc/hosts 2>/dev/null || true
 }
 

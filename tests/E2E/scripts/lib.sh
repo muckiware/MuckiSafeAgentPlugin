@@ -260,7 +260,7 @@ api_login() {
         '{grant_type: "password", client_id: "administration", scopes: "write", username: $u, password: $p}' |
         curl -fsS -H 'Content-Type: application/json' --data-binary @- "$(api_url)/api/oauth/token" |
         jq -r '.access_token')
-    [ -n "$API_TOKEN" ] && [ "$API_TOKEN" != null ] || die "admin login failed"
+    [[ -n $API_TOKEN && $API_TOKEN != null ]] || die "admin login failed"
 }
 
 # api METHOD PATH [JSON]: authenticated admin API call; prints the body and
