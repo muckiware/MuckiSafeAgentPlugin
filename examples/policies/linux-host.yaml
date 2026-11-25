@@ -20,12 +20,21 @@ services:
 containers:
   bitwarden-mssql:
     name: bitwarden-mssql
+  immich-postgres:
+    name: immich_postgres
 
 commands:
   # Creates a full MSSQL backup (.BAK) below bwdata/mssql/backups.
   bitwarden-full-backup:
     containerAlias: bitwarden-mssql
     argv: [/backup-db.sh]
+    timeoutSeconds: 600
+  # Online-consistent dump of the Immich database to stdout; the agent
+  # compresses it itself. Database and user are DB_DATABASE_NAME and
+  # DB_USERNAME of the Immich .env; authentication is the container's own.
+  immich-pg-dump:
+    containerAlias: immich-postgres
+    argv: [pg_dump, --clean, --if-exists, --dbname=immich, --username=postgres]
     timeoutSeconds: 600
 
 paths:
@@ -38,6 +47,37 @@ paths:
   jellyfin-config:
     root: /etc/jellyfin
     recursive: true
+  # UPLOAD_LOCATION of the Immich .env. Thumbnails, encoded videos and
+  # profile images default to subdirectories of it; point the three aliases
+  # below to THUMB_LOCATION, ENCODED_VIDEO_LOCATION and PROFILE_LOCATION
+  # when those are set. DB_DATA_LOCATION is never a source while PostgreSQL
+  # runs, EXTERNAL_PATH is backed up with its own source.
+  immich-upload:
+    root: /opt/immich/library
+    recursive: true
+  immich-thumbs:
+    root: /opt/immich/library/thumbs
+    recursive: true
+  immich-encoded-video:
+    root: /opt/immich/library/encoded-video
+    recursive: true
+  immich-profile:
+    root: /opt/immich/library/profile
+    recursive: true
+
+destinations:
+  # Manual database dumps of the agent, kept apart from Immich's automatic
+  # immich-db-backup-* files, which retention never touches.
+  immich-manual-backups:
+    pathAlias: immich-upload
+    directory: backups
+    prefix: immich-db-dump-manual-
+    suffix: .sql.gz
+    owner: 33
+    group: 33
+    mode: "0640"
+    maximumBytes: 21474836480
+    maximumKeep: 10
 
 principals:
   # The user the MuckiSafe container reads backup sources as (www-data).
@@ -79,6 +119,27 @@ checks:
     readableBy: muckisafe-backup
     relativePaths:
       - .
+  immich-upload-required-readable:
+    pathAlias: immich-upload
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-thumbs-required-readable:
+    pathAlias: immich-thumbs
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-encoded-video-required-readable:
+    pathAlias: immich-encoded-video
+    readableBy: muckisafe-backup
+    recursive: true
+  immich-profile-required-readable:
+    pathAlias: immich-profile
+    readableBy: muckisafe-backup
+    recursive: true
+  # The non-empty dump this run published, by its manifest identity.
+  immich-current-run-output:
+    destinationAlias: immich-manual-backups
+    readableBy: muckisafe-backup
+    minimumSize: 1
 
 endpoints:
   # Optional health probe for a post action; replace host and address range.

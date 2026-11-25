@@ -218,7 +218,11 @@ func runBitwardenScenario(t *testing.T, fixture referenceFixture, definition str
 func inject(t *testing.T, root, remove string, link *symlinkInjection) {
 	t.Helper()
 	if remove != "" {
-		if err := os.Remove(filepath.Join(root, remove)); err != nil {
+		// Lstat keeps a misspelled path from passing silently
+		if _, err := os.Lstat(filepath.Join(root, remove)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.RemoveAll(filepath.Join(root, remove)); err != nil {
 			t.Fatal(err)
 		}
 	}

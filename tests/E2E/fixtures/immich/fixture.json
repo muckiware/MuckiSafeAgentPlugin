@@ -1,0 +1,138 @@
+{
+  "fixtureVersion": 1,
+  "service": "immich",
+  "contract": "tests/E2E/contracts/immich.json",
+  "action": "examples/actions/immich.json",
+  "policy": "examples/policies/linux-host.yaml",
+  "layouts": {
+    "default": {
+      "/opt/immich/library": "library",
+      "/opt/immich/library/thumbs": "library/thumbs",
+      "/opt/immich/library/encoded-video": "library/encoded-video",
+      "/opt/immich/library/profile": "library/profile"
+    },
+    "separate": {
+      "/opt/immich/library": "library",
+      "/opt/immich/library/thumbs": "external/thumbs",
+      "/opt/immich/library/encoded-video": "external/encoded-video",
+      "/opt/immich/library/profile": "external/profile"
+    }
+  },
+  "description": "Pre phase of the Immich reference action against a seeded UPLOAD_LOCATION, either in Immich's default layout or with separate THUMB/ENCODED_VIDEO/PROFILE locations. Ten earlier manual dumps are recorded in the agent manifest; an unmanifested legacy dump and an automatic Immich dump lie next to them. The agent reference test (agent/internal/primitives/reference_immich_test.go) replays every scenario with a fake pg_dump; the live E2E of Task 32 replays them against the pinned Immich images.",
+  "seed": {
+    "directories": [
+      {"path": "library", "mode": "0750"},
+      {"path": "library/library", "mode": "0700"},
+      {"path": "library/library/admin", "mode": "0700"},
+      {"path": "library/upload", "mode": "0700"},
+      {"path": "library/thumbs", "mode": "0700"},
+      {"path": "library/encoded-video", "mode": "0700"},
+      {"path": "library/profile", "mode": "0700"},
+      {"path": "library/backups", "mode": "0700"},
+      {"path": "external", "mode": "0755"},
+      {"path": "external/thumbs", "mode": "0700"},
+      {"path": "external/encoded-video", "mode": "0700"},
+      {"path": "external/profile", "mode": "0700"}
+    ],
+    "files": [
+      {"path": "library/library/admin/IMG_0001.jpg", "mode": "0600", "content": "JPEG fixture"},
+      {"path": "library/upload/upload-1.jpg", "mode": "0600", "content": "JPEG fixture"},
+      {"path": "library/thumbs/thumb-1.webp", "mode": "0600", "content": "WEBP fixture"},
+      {"path": "library/encoded-video/video-1.mp4", "mode": "0600", "content": "MP4 fixture"},
+      {"path": "library/profile/profile-1.jpg", "mode": "0600", "content": "JPEG fixture"},
+      {"path": "library/backups/immich-db-backup-20261101T020000-v3.3.5-pg14.sql.gz", "mode": "0600", "content": "automatic Immich dump"},
+      {"path": "library/backups/immich-db-dump-manual-legacy.sql.gz", "mode": "0600", "content": "unmanifested legacy dump"},
+      {"path": "external/thumbs/thumb-1.webp", "mode": "0600", "content": "WEBP fixture"},
+      {"path": "external/encoded-video/video-1.mp4", "mode": "0600", "content": "MP4 fixture"},
+      {"path": "external/profile/profile-1.jpg", "mode": "0600", "content": "JPEG fixture"}
+    ]
+  },
+  "dump": {
+    "container": "immich_postgres",
+    "argv": ["pg_dump", "--clean", "--if-exists", "--dbname=immich", "--username=postgres"],
+    "output": "-- PostgreSQL database dump\nDROP TABLE IF EXISTS public.asset;\nCREATE TABLE public.asset ();\n",
+    "destinationAlias": "immich-manual-backups",
+    "directory": "library/backups",
+    "prefix": "immich-db-dump-manual-",
+    "suffix": ".sql.gz",
+    "mode": "0640",
+    "uid": 33,
+    "gid": 33
+  },
+  "history": {
+    "runIdPrefix": "0190c3a4-5b6e-7f80-9a1b-2c3d4e5f60",
+    "runs": 10,
+    "mode": "0640",
+    "uid": 33,
+    "gid": 33
+  },
+  "core": {
+    "operation": "muckisafe.backup",
+    "readableBy": {"uid": 33, "gid": 33},
+    "sources": ["/opt/immich/library", "/opt/immich/library/thumbs", "/opt/immich/library/encoded-video", "/opt/immich/library/profile"]
+  },
+  "scenarios": [
+    {
+      "name": "success in the default layout",
+      "layout": "default",
+      "inject": {},
+      "expect": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "11 steps completed", "invoked": true, "dump": "published", "removedHistory": [0], "core": "readable"}
+    },
+    {
+      "name": "success with separate locations",
+      "layout": "separate",
+      "inject": {},
+      "expect": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "11 steps completed", "invoked": true, "dump": "published", "removedHistory": [0], "core": "readable"}
+    },
+    {
+      "name": "pg_dump fails after partial output",
+      "layout": "default",
+      "inject": {"commandExit": 1, "output": "partial"},
+      "expect": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[pipeline_failed] step 1 (file.write-pipeline)", "invoked": true, "dump": "none", "removedHistory": [], "core": "skipped"}
+    },
+    {
+      "name": "empty dump",
+      "layout": "default",
+      "inject": {"output": "none"},
+      "expect": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[pipeline_failed] step 1 (file.write-pipeline)", "invoked": true, "dump": "none", "removedHistory": [], "core": "skipped"}
+    },
+    {
+      "name": "backups directory replaced by a symlink",
+      "layout": "default",
+      "inject": {"symlink": {"path": "library/backups", "target": "/var/tmp"}},
+      "expect": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[policy_rejected] step 1 (file.write-pipeline)", "invoked": false, "dump": "none", "removedHistory": [], "core": "skipped"}
+    },
+    {
+      "name": "symlink out of the thumbnails is not followed",
+      "layout": "default",
+      "inject": {"symlink": {"path": "library/thumbs/escape", "target": "/etc"}},
+      "expect": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "11 steps completed", "invoked": true, "dump": "published", "removedHistory": [0], "core": "readable"}
+    },
+    {
+      "name": "profile location missing",
+      "layout": "separate",
+      "inject": {"remove": "external/profile"},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 6 (filesystem.acl.read)", "invoked": true, "dump": "published", "removedHistory": [0], "core": "skipped"}
+    },
+    {
+      "name": "retention identity mismatch deletes nothing",
+      "layout": "default",
+      "inject": {"replaceHistory": 3},
+      "expect": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[retention_rejected] step 2 (file.retention)", "invoked": true, "dump": "published", "removedHistory": [], "core": "skipped"}
+    }
+  ],
+  "cleanup": {
+    "selector": {
+      "destinationAlias": "immich-manual-backups",
+      "relativeDirectory": "library/backups",
+      "artifacts": "the current-run dump, recorded with device/inode before cleanup",
+      "artifactRunId": "required",
+      "deviceInodeMatch": true,
+      "linkCount": 1,
+      "noSymlinks": true
+    },
+    "onIdentityMismatch": "delete_nothing",
+    "aclRestore": {"trustedPreTestSnapshot": true, "rootIdentityMatch": true, "onMismatch": "mutate_nothing"},
+    "endState": "seed tree and ACLs as before the run, minus exactly the manifest-owned dumps retention removed; automatic and unmanifested dumps untouched"
+  }
+}

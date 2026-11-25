@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "file.write-pipeline",
+      "sourceCommandAlias": "immich-pg-dump",
+      "destinationAlias": "immich-manual-backups",
+      "transforms": [
+        "gzip"
+      ],
+      "nameFromRunId": true
+    },
+    {
+      "primitive": "file.retention",
+      "pathAlias": "immich-upload",
+      "manifestAlias": "immich-manual-backups",
+      "keep": 10
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-upload",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-thumbs",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-encoded-video",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "immich-profile",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-upload-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-thumbs-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-encoded-video-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-profile-required-readable"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "immich-current-run-output"
+    }
+  ]
+}
