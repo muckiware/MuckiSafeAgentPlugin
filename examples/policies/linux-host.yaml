@@ -8,6 +8,15 @@
 # defined here. Adjust the values to the host before use.
 version: 1
 
+services:
+  # A stop succeeds only once the unit is inactive and its cgroup is empty,
+  # so the Jellyfin SQLite database is quiescent during the backup.
+  jellyfin:
+    unit: jellyfin.service
+    stopTimeoutSeconds: 30
+    startTimeoutSeconds: 120
+    requireEmptyCgroupAfterStop: true
+
 containers:
   bitwarden-mssql:
     name: bitwarden-mssql
@@ -22,6 +31,12 @@ commands:
 paths:
   bitwarden-data:
     root: /opt/bitwarden
+    recursive: true
+  jellyfin-data:
+    root: /var/lib/jellyfin
+    recursive: true
+  jellyfin-config:
+    root: /etc/jellyfin
     recursive: true
 
 principals:
@@ -51,6 +66,19 @@ checks:
       directory: bwdata/core/aspnet-dataprotection
       suffix: .xml
       minimumCount: 1
+  # Data directory and SQLite database of the stopped Jellyfin.
+  jellyfin-required-data:
+    pathAlias: jellyfin-data
+    readableBy: muckisafe-backup
+    relativePaths:
+      - .
+      - data
+      - data/jellyfin.db
+  jellyfin-required-config:
+    pathAlias: jellyfin-config
+    readableBy: muckisafe-backup
+    relativePaths:
+      - .
 
 endpoints:
   # Optional health probe for a post action; replace host and address range.
@@ -63,3 +91,10 @@ endpoints:
     maximumBodyBytes: 65536
     jsonFields:
       version: "2026.10.1"
+  # Readiness of the restarted Jellyfin in the finally action.
+  jellyfin-public-info:
+    url: http://127.0.0.1:8096/System/Info/Public
+    expectedStatuses: [200]
+    allowedIpRanges: [127.0.0.0/8]
+    timeoutSeconds: 120
+    intervalSeconds: 1

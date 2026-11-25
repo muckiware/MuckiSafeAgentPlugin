@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "service.control",
+      "serviceAlias": "jellyfin",
+      "operation": "start"
+    },
+    {
+      "primitive": "service.wait-http",
+      "endpointAlias": "jellyfin-public-info",
+      "expectedStatuses": [
+        200
+      ]
+    }
+  ]
+}

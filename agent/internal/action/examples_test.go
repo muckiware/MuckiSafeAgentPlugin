@@ -9,8 +9,9 @@ import (
 )
 
 // TestExampleActionsAreTheSharedReferenceDefinitions requires every
-// examples/actions/<service>.json to be the shared fixture "<service>-pre":
-// valid, with the same canonical bytes and hash as in PHP.
+// examples/actions/<service>.json to be the shared fixture "<service>-pre"
+// and every <service>-post.json or <service>-finally.json the case of that
+// name: valid, with the same canonical bytes and hash as in PHP.
 func TestExampleActionsAreTheSharedReferenceDefinitions(t *testing.T) {
 	raw, err := os.ReadFile("../../../tests/Fixtures/action-dsl-v1.json")
 	if err != nil {
@@ -32,7 +33,7 @@ func TestExampleActionsAreTheSharedReferenceDefinitions(t *testing.T) {
 		t.Fatalf("no example actions: %v", err)
 	}
 	for _, path := range examples {
-		name := strings.TrimSuffix(filepath.Base(path), ".json") + "-pre"
+		name := exampleCase(strings.TrimSuffix(filepath.Base(path), ".json"))
 		t.Run(name, func(t *testing.T) {
 			raw, err := os.ReadFile(path)
 			if err != nil {
@@ -55,4 +56,11 @@ func TestExampleActionsAreTheSharedReferenceDefinitions(t *testing.T) {
 			t.Fatalf("the shared fixture has no case %s", name)
 		})
 	}
+}
+
+func exampleCase(base string) string {
+	if strings.HasSuffix(base, "-post") || strings.HasSuffix(base, "-finally") {
+		return base
+	}
+	return base + "-pre"
 }

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "steps": [
+    {
+      "primitive": "service.control",
+      "serviceAlias": "jellyfin",
+      "operation": "stop"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "jellyfin-data",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.acl.read",
+      "pathAlias": "jellyfin-config",
+      "principalAlias": "muckisafe-backup"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "jellyfin-required-data"
+    },
+    {
+      "primitive": "filesystem.assert-readable",
+      "checkAlias": "jellyfin-required-config"
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+{
+  "fixtureVersion": 1,
+  "service": "jellyfin",
+  "contract": "tests/E2E/contracts/jellyfin.json",
+  "actions": {
+    "pre": "examples/actions/jellyfin.json",
+    "finally": "examples/actions/jellyfin-finally.json"
+  },
+  "policy": "examples/policies/linux-host.yaml",
+  "policyRoots": {
+    "/var/lib/jellyfin": "data",
+    "/etc/jellyfin": "config"
+  },
+  "policyOrigin": "http://127.0.0.1:8096",
+  "description": "Pre and finally phase of the Jellyfin reference lifecycle against a seeded data and config tree. The agent reference test (agent/internal/primitives/reference_jellyfin_test.go) replays every scenario with a fake systemctl whose unit state drives a fake public-info endpoint; the finally job runs after every pre and core outcome, as the BackupRunCoordinator does. The live E2E of Task 32 replays them against the pinned Jellyfin image.",
+  "seed": {
+    "directories": [
+      {"path": "data", "mode": "0750"},
+      {"path": "data/data", "mode": "0750"},
+      {"path": "data/metadata", "mode": "0750"},
+      {"path": "data/metadata/library", "mode": "0700"},
+      {"path": "data/plugins", "mode": "0750"},
+      {"path": "config", "mode": "0750"}
+    ],
+    "files": [
+      {"path": "data/data/jellyfin.db", "mode": "0640", "content": "SQLite format 3 fixture"},
+      {"path": "data/data/library.db", "mode": "0640", "content": "SQLite format 3 fixture"},
+      {"path": "data/metadata/library/poster.jpg", "mode": "0600", "content": "JPEG fixture"},
+      {"path": "config/system.xml", "mode": "0640", "content": "<ServerConfiguration/>"},
+      {"path": "config/logging.default.json", "mode": "0640", "content": "{}"}
+    ]
+  },
+  "unit": {
+    "name": "jellyfin.service",
+    "controlGroup": "/system.slice/jellyfin.service"
+  },
+  "health": {
+    "path": "/System/Info/Public",
+    "body": "{\"ServerName\":\"jellyfin\",\"Version\":\"12.4.0\",\"StartupWizardCompleted\":true}"
+  },
+  "core": {
+    "operation": "muckisafe.backup",
+    "readableBy": {"uid": 33, "gid": 33},
+    "sources": ["data", "config"],
+    "excludes": ["transcodes"]
+  },
+  "scenarios": [
+    {
+      "name": "success",
+      "inject": {},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "5 steps completed"},
+        "core": "readable",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "core failure still starts Jellyfin",
+      "inject": {"coreFails": true},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "5 steps completed"},
+        "core": "failed",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "stop failure runs the best-effort finally",
+      "inject": {"stopExit": 1},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[service_stop_failed] step 1 (service.control)"},
+        "core": "skipped",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "processes left in the cgroup after stop",
+      "inject": {"cgroupPopulated": true},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[service_stop_failed] step 1 (service.control)"},
+        "core": "skipped",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "database missing",
+      "inject": {"remove": "data/data/jellyfin.db"},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[verification_failed] step 4 (filesystem.assert-readable)"},
+        "core": "skipped",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "database directory replaced by a symlink",
+      "inject": {"symlink": {"path": "data/data", "target": "/etc"}},
+      "expect": {
+        "pre": {"outcome": "failed", "resultCode": "partial_failure", "summaryPrefix": "[policy_rejected] step 4 (filesystem.assert-readable)"},
+        "core": "skipped",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "already stopped, pre and finally repeated",
+      "inject": {"initiallyInactive": true, "runs": 2},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "5 steps completed"},
+        "core": "readable",
+        "finally": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "2 steps completed"},
+        "unit": "active",
+        "healthStatus": 200
+      }
+    },
+    {
+      "name": "start failure after a core failure",
+      "inject": {"coreFails": true, "startFails": true},
+      "expect": {
+        "pre": {"outcome": "succeeded", "resultCode": "ok", "summaryPrefix": "5 steps completed"},
+        "core": "failed",
+        "finally": {"outcome": "failed", "resultCode": "step_failed", "summaryPrefix": "[service_start_failed] step 1 (service.control)"},
+        "unit": "inactive",
+        "healthStatus": 503
+      }
+    }
+  ],
+  "cleanup": {
+    "serviceState": "restore the pre-test unit state (active) when a scenario ends inactive",
+    "aclRestore": {
+      "pathAliases": ["jellyfin-data", "jellyfin-config"],
+      "trustedPreTestSnapshot": true,
+      "rootIdentityMatch": true,
+      "onMismatch": "mutate_nothing"
+    },
+    "filesCreated": [],
+    "endState": "seed trees and ACLs exactly as before the run, unit active"
+  }
+}
