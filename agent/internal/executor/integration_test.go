@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -113,7 +114,7 @@ func TestNetworkPartitionStillStopsAStubbornProcessAndJournalsWithinTheBuffer(t 
 		t.Fatalf("completions %d", len(server.completions))
 	}
 	result := server.completions[0].CompletionResult
-	if result.Outcome != "timed_out" || result.ResultCode != "execution_deadline" {
+	if result.Outcome != "timed_out" || result.ResultCode != "deadline" || !strings.HasPrefix(result.Summary, "[execution_deadline] ") {
 		t.Fatalf("result %+v", result)
 	}
 	// execution deadline 1s + SIGTERM grace 0.3s + exit; far below the 3s stop deadline

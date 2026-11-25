@@ -10,8 +10,8 @@ import (
 
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/api"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/config"
-	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/executor"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/policy"
+	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/primitives"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/version"
 )
 
@@ -67,7 +67,7 @@ func validate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "config validate:", err)
 		return 1
 	}
-	if _, err := policy.Load(cfg.Agent.PolicyFile, executor.PolicyDecoders()); err != nil {
+	if _, err := policy.Load(cfg.Agent.PolicyFile, primitives.PolicyDecoders()); err != nil {
 		fmt.Fprintln(stderr, "config validate:", err)
 		return 1
 	}

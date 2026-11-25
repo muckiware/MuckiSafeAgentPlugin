@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -182,6 +183,48 @@ type CompletionResult struct {
 }
 
 var resultCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
+
+// resultCodes is the versioned V1 allowlist of the control plane
+// (src/Core/Job/ResultCode.php, pinned by the shared protocol fixtures);
+// the server rejects a completion with any other code.
+var resultCodes = map[string]bool{
+	"ok": true, "partial_failure": true, "step_failed": true, "deadline": true, "journal_started": true,
+}
+
+// genericResultCodes replaces an agent-specific code per outcome.
+var genericResultCodes = map[string]string{
+	"succeeded": "ok", "failed": "step_failed", "timed_out": "deadline", "ambiguous": "journal_started",
+}
+
+// summaryLimitChars is the server limit beyond the schema's 4096 characters
+// (OutputTailNormalizer::SUMMARY_LIMIT_CHARS). At four bytes per character it
+// also keeps SUMMARY_LIMIT_BYTES (4096).
+const summaryLimitChars = 1024
+
+// ForWire maps the result onto the V1 protocol. A code outside the allowlist
+// becomes the generic code of its outcome and is kept as "[code] " prefix of
+// the summary; the summary is cut to the server's limits.
+// The mapping is idempotent, so a journaled result can pass it again.
+func (r CompletionResult) ForWire() CompletionResult {
+	if generic, ok := genericResultCodes[r.Outcome]; ok && !resultCodes[r.ResultCode] {
+		if resultCodePattern.MatchString(r.ResultCode) {
+			r.Summary = "[" + r.ResultCode + "] " + r.Summary
+		}
+		r.ResultCode = generic
+	}
+	r.Summary = limitSummary(r.Summary)
+	return r
+}
+
+// limitSummary keeps whole UTF-8 characters within the server limits and
+// replaces invalid UTF-8.
+func limitSummary(summary string) string {
+	summary = strings.ToValidUTF8(summary, "\uFFFD")
+	if utf8.RuneCountInString(summary) > summaryLimitChars {
+		summary = string([]rune(summary)[:summaryLimitChars])
+	}
+	return summary
+}
 
 // Validate applies the completion schema and the server's outcome/tail
 // matrix: succeeded and ambiguous carry no tails, a tail needs its encoding.

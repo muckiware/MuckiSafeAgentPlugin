@@ -17,6 +17,7 @@ import (
 	"io"
 	"log/slog"
 	"regexp"
+	"time"
 	"unicode/utf8"
 
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/action"
@@ -43,13 +44,16 @@ func (e *StepError) Error() string { return e.Message }
 
 // StepContext is everything a primitive may use for one step.
 type StepContext struct {
-	Job    agent.Job
-	Index  int
-	Step   map[string]any
-	Policy *policy.Policy
-	Stdout io.Writer
-	Stderr io.Writer
-	Gate   agent.StepGate
+	Job   agent.Job
+	Index int
+	Step  map[string]any
+	// Started is when the execution of the job began; files whose
+	// timestamps are not older were created by the current run.
+	Started time.Time
+	Policy  *policy.Policy
+	Stdout  io.Writer
+	Stderr  io.Writer
+	Gate    agent.StepGate
 
 	processes *ProcessRunner
 }
@@ -88,6 +92,7 @@ var resultCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 // Execute verifies the action and runs its steps in order, stopping at the
 // first failure; V1 performs no compensation.
 func (e *Executor) Execute(ctx context.Context, job agent.Job, gate agent.StepGate) api.CompletionResult {
+	started := time.Now()
 	steps, err := verifiedSteps(job)
 	if err != nil {
 		return e.fail("action_rejected", "The action was rejected before execution: "+err.Error(), nil, nil)
@@ -107,7 +112,7 @@ func (e *Executor) Execute(ctx context.Context, job agent.Job, gate agent.StepGa
 			return e.fail(failureCode(index, "primitive_unavailable"), fmt.Sprintf("Step %d: primitive %s is not available on this agent.", index+1, name), stdout, stderr)
 		}
 		err := primitive.Run(ctx, StepContext{
-			Job: job, Index: index, Step: step, Policy: snapshot,
+			Job: job, Index: index, Step: step, Started: started, Policy: snapshot,
 			Stdout: stdout, Stderr: stderr, Gate: gate, processes: e.Processes,
 		})
 		if errors.Is(err, ErrNotTerminated) {
@@ -183,11 +188,4 @@ func limitRunes(s string, n int) string {
 		return s
 	}
 	return string([]rune(s)[:n])
-}
-
-// PolicyDecoders returns the policy sections of all registered primitives.
-// Task 21 adds one section per primitive; until then only the empty V1
-// envelope is a valid policy.
-func PolicyDecoders() policy.Decoders {
-	return policy.Decoders{}
 }

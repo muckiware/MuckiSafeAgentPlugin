@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -217,7 +218,7 @@ func TestExecutionDeadlineIsEnforcedLocallyDespiteNetworkLoss(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := onlyCompletion(t, server)
-	if result.Outcome != "timed_out" || result.ResultCode != "execution_deadline" || result.StderrTail == nil {
+	if result.Outcome != "timed_out" || result.ResultCode != "deadline" || !strings.HasPrefix(result.Summary, "[execution_deadline] ") || result.StderrTail == nil {
 		t.Fatalf("result %+v", result)
 	}
 	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
@@ -244,7 +245,7 @@ func TestStopRequestedCutsTheExecutionShort(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := onlyCompletion(t, server)
-	if result.Outcome != "timed_out" || result.ResultCode != "stop_requested" || time.Since(start) > 2*time.Second {
+	if result.Outcome != "timed_out" || result.ResultCode != "deadline" || !strings.HasPrefix(result.Summary, "[stop_requested] ") || time.Since(start) > 2*time.Second {
 		t.Fatalf("result %+v after %s", result, time.Since(start))
 	}
 }
@@ -311,7 +312,7 @@ func TestUnterminatedProcessEndsAmbiguousAtTheStopDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := onlyCompletion(t, server)
-	if result.Outcome != "ambiguous" || result.ResultCode != "process_not_terminated" {
+	if result.Outcome != "ambiguous" || result.ResultCode != "journal_started" || !strings.HasPrefix(result.Summary, "[process_not_terminated] ") {
 		t.Fatalf("result %+v", result)
 	}
 	if elapsed := time.Since(start); elapsed > 3500*time.Millisecond {
@@ -366,7 +367,7 @@ func TestGracefulShutdownKeepsHeartbeatingAndStopsWithinTheBudget(t *testing.T) 
 	elapsed := time.Since(start)
 	result := onlyCompletion(t, server)
 	_, heartbeats, _ := server.snapshot()
-	if result.Outcome != "timed_out" || result.ResultCode != "agent_shutdown" {
+	if result.Outcome != "timed_out" || result.ResultCode != "deadline" || !strings.HasPrefix(result.Summary, "[agent_shutdown] ") {
 		t.Fatalf("result %+v", result)
 	}
 	if heartbeats <= heartbeatsAtShutdown {

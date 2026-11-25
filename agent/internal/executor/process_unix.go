@@ -35,6 +35,12 @@ var forbidden = map[string]bool{
 	"python": true, "python3": true, "perl": true, "ruby": true, "node": true, "php": true,
 }
 
+// ForbiddenProgram reports whether program names a shell, interpreter or
+// privilege/indirection tool that must never be the entry point of a command.
+func ForbiddenProgram(program string) bool {
+	return forbidden[filepath.Base(program)]
+}
+
 // baseEnvironment is the complete inherited environment of every process.
 var baseEnvironment = map[string]string{
 	"PATH":   "/usr/sbin:/usr/bin:/sbin:/bin",

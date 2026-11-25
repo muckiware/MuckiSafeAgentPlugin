@@ -217,9 +217,10 @@ func (r *Runner) start(shutdown context.Context, jobID string, lease api.JobLeas
 // finish journals the final result before sending it, so a lost completion is
 // repeated verbatim after a restart and never causes a second host effect.
 func (r *Runner) finish(shutdown context.Context, base idempotency.Record, result api.CompletionResult, giveUpAt time.Time) {
+	result = result.ForWire()
 	if err := result.Validate(); err != nil {
 		r.logger.Error("executor returned an invalid result", "job", base.JobID, "error", err)
-		result = api.CompletionResult{Outcome: "failed", ResultCode: "executor_result_invalid", Summary: "The executor returned a result outside the protocol."}
+		result = api.CompletionResult{Outcome: "failed", ResultCode: "executor_result_invalid", Summary: "The executor returned a result outside the protocol."}.ForWire()
 	}
 	completed := base
 	completed.State = idempotency.StateCompleted
@@ -234,7 +235,8 @@ func (r *Runner) finish(shutdown context.Context, base idempotency.Record, resul
 // rejected, the phase deadline passed or shutdown began. The journal record
 // is removed only once the server has decided.
 func (r *Runner) complete(shutdown context.Context, jobID string, lease api.JobLeaseRequest, result api.CompletionResult, giveUpAt time.Time) {
-	request := api.JobCompleteRequest{JobLeaseRequest: lease, CompletionResult: result}
+	// ForWire again for results journaled by an agent without the mapping
+	request := api.JobCompleteRequest{JobLeaseRequest: lease, CompletionResult: result.ForWire()}
 	for attempt := 0; ; attempt++ {
 		response, err := r.cfg.API.CompleteJob(context.Background(), jobID, request)
 		switch {
