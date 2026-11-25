@@ -14,6 +14,8 @@ Shopware.Component.register('muwa-agent-index', () => import('./page/muwa-agent-
 Shopware.Component.register('muwa-agent-host-list', () => import('./page/muwa-agent-host-list'));
 Shopware.Component.register('muwa-agent-action-list', () => import('./page/muwa-agent-action-list'));
 Shopware.Component.register('muwa-agent-action-detail', () => import('./page/muwa-agent-action-detail'));
+Shopware.Component.register('muwa-agent-hook-list', () => import('./page/muwa-agent-hook-list'));
+Shopware.Component.register('muwa-agent-hook-modal', () => import('./component/muwa-agent-hook-modal'));
 Shopware.Component.register('muwa-agent-provision-modal', () => import('./component/muwa-agent-provision-modal'));
 Shopware.Component.register('muwa-agent-secret-modal', () => import('./component/muwa-agent-secret-modal'));
 
@@ -53,6 +55,14 @@ Shopware.Module.register('muwa-agent', {
                 actions: {
                     component: 'muwa-agent-action-list',
                     path: 'actions',
+                    meta: {
+                        parentPath: 'sw.settings.index.plugins',
+                        privilege: 'muwa_agent.viewer',
+                    },
+                },
+                hooks: {
+                    component: 'muwa-agent-hook-list',
+                    path: 'hooks',
                     meta: {
                         parentPath: 'sw.settings.index.plugins',
                         privilege: 'muwa_agent.viewer',

@@ -14,6 +14,9 @@ Shopware.Service('privileges').addPrivilegeMappingEntry({
             privileges: [
                 'muwa_agent_host:read',
                 'muwa_agent_action:read',
+                'muwa_agent_repository_hook:read',
+                // Facility repositories are read through the Facility entity (name and legacy hook types).
+                'muwa_backup_repository:read',
             ],
             dependencies: [],
         },

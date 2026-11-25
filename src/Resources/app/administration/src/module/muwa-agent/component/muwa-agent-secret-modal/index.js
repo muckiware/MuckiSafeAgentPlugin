@@ -1,4 +1,5 @@
 import template from './muwa-agent-secret-modal.html.twig';
+import './muwa-agent-secret-modal.scss';
 
 /**
  * One-time display of a freshly issued agent secret (provisioning or

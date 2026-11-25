@@ -36,6 +36,18 @@ export default class MuwaAgentApiService extends ApiService {
             .then((response) => ApiService.handleResponse(response));
     }
 
+    saveHook(payload) {
+        return this.httpClient
+            .post(`${this.getApiBasePath()}/repository-hook`, payload, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
+    deleteHook(hookId) {
+        return this.httpClient
+            .delete(`${this.getApiBasePath()}/repository-hook/${hookId}`, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
     validateAction(definition) {
         return this.httpClient
             .post(`${this.getApiBasePath()}/action/validate`, { definition }, { headers: this.getBasicHeaders() })

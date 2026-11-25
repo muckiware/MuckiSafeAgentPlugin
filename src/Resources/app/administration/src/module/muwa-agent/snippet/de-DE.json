@@ -6,7 +6,8 @@
     },
     "tabs": {
       "hosts": "Agenten",
-      "actions": "Actions"
+      "actions": "Actions",
+      "hooks": "Repository-Hooks"
     },
     "host": {
       "nameLabel": "Name",
@@ -53,7 +54,15 @@
       "operation_failed": "Die Aktion ist fehlgeschlagen. Details stehen im Log.",
       "invalid_definition": "Die Action-Definition ist ungültig.",
       "technical_name_taken": "Der technische Name ist bereits vergeben.",
-      "action_not_found": "Die Action existiert nicht mehr."
+      "action_not_found": "Die Action existiert nicht mehr.",
+      "timeout_out_of_range": "Das Phasenbudget liegt außerhalb des zulässigen Bereichs.",
+      "facility_unavailable": "Das MuckiFacilityPlugin ist nicht aktiv.",
+      "facility_repository_not_found": "Das Facility-Repository existiert nicht.",
+      "legacy_hook_conflict": "Im Facility-Repository sind noch Legacy-Hooks aktiv.",
+      "agent_unavailable": "Der Ziel-Agent ist widerrufen, deaktiviert oder existiert nicht.",
+      "capability_missing": "Dem Ziel-Agenten fehlt eine Capability, die die Action benötigt.",
+      "action_unavailable": "Die Action ist deaktiviert oder existiert nicht.",
+      "hook_not_found": "Der Hook existiert nicht mehr."
     },
     "action": {
       "createButton": "Action anlegen",
@@ -98,6 +107,40 @@
         "idempotencyClass": "Ungültige Idempotenzklasse.",
         "id": "Ungültige Action-ID."
       }
+    },
+    "hook": {
+      "createButton": "Hook zuordnen",
+      "createTitle": "Hook zuordnen",
+      "editTitle": "Hook bearbeiten",
+      "emptyState": "Es sind noch keine Repository-Hooks zugeordnet.",
+      "repositoryLabel": "Facility-Repository",
+      "phaseLabel": "Phase",
+      "phaseHelp": "Pro Repository und Phase gibt es genau einen Hook. Repository und Phase sind nach dem Anlegen fest.",
+      "phases": {
+        "pre": "Vor dem Backup (pre)",
+        "post": "Nach dem Backup (post)",
+        "finally": "Immer am Ende (finally)"
+      },
+      "agentLabel": "Ziel-Agent",
+      "actionLabel": "Action",
+      "timeoutSecondsLabel": "Phasenbudget (Sekunden)",
+      "timeoutSecondsHelp": "Zulässig sind {min} bis {max} Sekunden (Obergrenze aus Phase und maximalem Timeout der Action).",
+      "failOnErrorLabel": "Backup bei Fehler abbrechen",
+      "failOnErrorHelp": "Schlägt die Action fehl, gilt das Backup als fehlgeschlagen. Ohne diese Option wird der Fehler nur protokolliert.",
+      "enabledLabel": "Aktiv",
+      "unknownReference": "(nicht gefunden)",
+      "legacyConflictTitle": "Legacy-Hooks im Facility-Repository aktiv",
+      "legacyConflictText": "Dieses Repository führt noch eigene Kommandos aus ({fields}). Setze sie im Facility-Modul auf „Keine Ausführung“, bevor du Agent-Hooks zuordnest.",
+      "legacyFields": {
+        "preBackupCommandType": "Kommando vor dem Backup",
+        "postBackupCommandType": "Kommando nach dem Backup"
+      },
+      "capabilityMismatchTitle": "Dem Agenten fehlen Capabilities",
+      "capabilityMismatchText": "Der Agent meldet diese Capabilities der Action nicht: {capabilities}. Der Server lehnt die Zuordnung ab, bis der Agent sie meldet.",
+      "saveSuccess": "Der Hook wurde gespeichert.",
+      "deleteSuccess": "Der Hook wurde gelöscht.",
+      "deleteConfirmTitle": "Hook löschen",
+      "deleteConfirmText": "Der Hook für „{repository}“ in der Phase {phase} wird gelöscht. Bereits erzeugte Jobs bleiben erhalten."
     }
   }
 }

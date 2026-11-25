@@ -15,6 +15,7 @@ namespace MuckiSafeAgentPlugin\Subscriber;
 use MuckiSafeAgentPlugin\Core\Content\AgentAction\AgentActionDefinition;
 use MuckiSafeAgentPlugin\Core\Content\AgentHost\AgentHostDefinition;
 use MuckiSafeAgentPlugin\Core\Content\AgentNonce\AgentNonceDefinition;
+use MuckiSafeAgentPlugin\Core\Content\AgentRepositoryHook\AgentRepositoryHookDefinition;
 use Shopware\Core\Framework\Api\Context\AdminApiSource;
 use Shopware\Core\Framework\Context;
 use Shopware\Core\Framework\DataAbstractionLayer\Write\Validation\PreWriteValidationEvent;
@@ -38,6 +39,7 @@ final class AgentEntityWriteGuardSubscriber implements EventSubscriberInterface
         AgentActionDefinition::ENTITY_NAME,
         AgentHostDefinition::ENTITY_NAME,
         AgentNonceDefinition::ENTITY_NAME,
+        AgentRepositoryHookDefinition::ENTITY_NAME,
     ];
 
     /**

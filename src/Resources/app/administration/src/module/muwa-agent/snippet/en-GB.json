@@ -6,7 +6,8 @@
     },
     "tabs": {
       "hosts": "Agents",
-      "actions": "Actions"
+      "actions": "Actions",
+      "hooks": "Repository hooks"
     },
     "host": {
       "nameLabel": "Name",
@@ -53,7 +54,15 @@
       "operation_failed": "The operation failed. See the log for details.",
       "invalid_definition": "The action definition is invalid.",
       "technical_name_taken": "The technical name is already taken.",
-      "action_not_found": "The action no longer exists."
+      "action_not_found": "The action no longer exists.",
+      "timeout_out_of_range": "The phase budget is outside the allowed range.",
+      "facility_unavailable": "MuckiFacilityPlugin is not active.",
+      "facility_repository_not_found": "The Facility repository does not exist.",
+      "legacy_hook_conflict": "Legacy hooks are still active on the Facility repository.",
+      "agent_unavailable": "The target agent is revoked, disabled or does not exist.",
+      "capability_missing": "The target agent lacks a capability the action requires.",
+      "action_unavailable": "The action is disabled or does not exist.",
+      "hook_not_found": "The hook no longer exists."
     },
     "action": {
       "createButton": "Create action",
@@ -98,6 +107,40 @@
         "idempotencyClass": "Invalid idempotency class.",
         "id": "Invalid action ID."
       }
+    },
+    "hook": {
+      "createButton": "Assign hook",
+      "createTitle": "Assign hook",
+      "editTitle": "Edit hook",
+      "emptyState": "No repository hooks have been assigned yet.",
+      "repositoryLabel": "Facility repository",
+      "phaseLabel": "Phase",
+      "phaseHelp": "There is exactly one hook per repository and phase. Repository and phase are fixed once the hook exists.",
+      "phases": {
+        "pre": "Before the backup (pre)",
+        "post": "After the backup (post)",
+        "finally": "Always at the end (finally)"
+      },
+      "agentLabel": "Target agent",
+      "actionLabel": "Action",
+      "timeoutSecondsLabel": "Phase budget (seconds)",
+      "timeoutSecondsHelp": "Allowed: {min} to {max} seconds (upper bound from the phase and the action's maximum timeout).",
+      "failOnErrorLabel": "Fail backup on error",
+      "failOnErrorHelp": "If the action fails, the backup counts as failed. Without this option the error is only logged.",
+      "enabledLabel": "Active",
+      "unknownReference": "(not found)",
+      "legacyConflictTitle": "Legacy hooks active on the Facility repository",
+      "legacyConflictText": "This repository still runs its own commands ({fields}). Set them to \"No execution\" in the Facility module before assigning agent hooks.",
+      "legacyFields": {
+        "preBackupCommandType": "command before the backup",
+        "postBackupCommandType": "command after the backup"
+      },
+      "capabilityMismatchTitle": "The agent lacks capabilities",
+      "capabilityMismatchText": "The agent does not report these capabilities of the action: {capabilities}. The server rejects the assignment until the agent reports them.",
+      "saveSuccess": "The hook has been saved.",
+      "deleteSuccess": "The hook has been deleted.",
+      "deleteConfirmTitle": "Delete hook",
+      "deleteConfirmText": "The hook for \"{repository}\" in phase {phase} will be deleted. Jobs already created are kept."
     }
   }
 }
