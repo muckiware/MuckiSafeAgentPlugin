@@ -13,8 +13,10 @@
             <argument type="service" id="plugin.repository"/>
         </service>
 
+        <!-- default:: keeps a missing variable from failing the container on every
+             request; the provider reports it on first use (EncryptionKeyringException). -->
         <service id="MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider" public="true">
-            <argument>%env(string:MUWA_AGENT_ENCRYPTION_KEYRING)%</argument>
+            <argument>%env(string:default::MUWA_AGENT_ENCRYPTION_KEYRING)%</argument>
         </service>
         <service id="MuckiSafeAgentPlugin\Service\Secret\SecretWriteGuard" public="true">
             <argument type="service" id="Doctrine\DBAL\Connection"/>

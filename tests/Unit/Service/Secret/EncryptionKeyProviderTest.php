@@ -12,6 +12,7 @@
 namespace MuckiSafeAgentPlugin\tests\Unit\Service\Secret;
 
 use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyProvider;
+use MuckiSafeAgentPlugin\Service\Secret\EncryptionKeyringException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -33,7 +34,6 @@ final class EncryptionKeyProviderTest extends TestCase
     /** @return iterable<string, array{string}> */
     public static function invalidKeyrings(): iterable
     {
-        yield 'empty' => [''];
         yield 'malformed' => ['{"active":1'];
         yield 'array root' => ['[]'];
         yield 'missing active' => ['{"keys":{"1":"' . self::KEY1 . '"}}'];
@@ -50,13 +50,53 @@ final class EncryptionKeyProviderTest extends TestCase
         yield 'unexpected top level' => ['{"active":1,"keys":{"1":"' . self::KEY1 . '"},"debug":true}'];
     }
 
+    /**
+     * The keyring is only validated on first use: a missing or broken keyring
+     * must not break the container (and with it every request of the shop),
+     * only the agent operations that need a key.
+     */
     #[DataProvider('invalidKeyrings')]
-    public function testInvalidKeyringsFailClosed(string $json): void
+    public function testInvalidKeyringsFailClosedOnEveryUse(string $json): void
     {
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('Invalid encryption keyring');
+        $provider = new EncryptionKeyProvider($json);
 
-        new EncryptionKeyProvider($json);
+        $this->assertEveryAccessFails($provider, 'Invalid encryption keyring.');
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function missingKeyrings(): iterable
+    {
+        yield 'empty' => [''];
+        yield 'whitespace' => ["  \n"];
+    }
+
+    #[DataProvider('missingKeyrings')]
+    public function testMissingKeyringNamesTheVariableOnEveryUse(string $json): void
+    {
+        $provider = new EncryptionKeyProvider($json);
+
+        $this->assertEveryAccessFails($provider, 'MUWA_AGENT_ENCRYPTION_KEYRING is not configured.');
+    }
+
+    private function assertEveryAccessFails(EncryptionKeyProvider $provider, string $message): void
+    {
+        $accessors = [
+            'activeVersion' => static fn () => $provider->activeVersion(),
+            'activeKey' => static fn () => $provider->activeKey(),
+            'keyForVersion' => static fn () => $provider->keyForVersion(1),
+            'versions' => static fn () => $provider->versions(),
+        ];
+        foreach ([1, 2] as $round) {
+            foreach ($accessors as $name => $access) {
+                try {
+                    $access();
+                    self::fail(sprintf('%s must fail closed (round %d).', $name, $round));
+                } catch (EncryptionKeyringException $exception) {
+                    self::assertSame($message, $exception->getMessage(), $name);
+                    self::assertStringNotContainsString(self::KEY1, (string) $exception, $name);
+                }
+            }
+        }
     }
 
     public function testUnknownVersionFailsClosedWithoutLeakingConfiguration(): void
