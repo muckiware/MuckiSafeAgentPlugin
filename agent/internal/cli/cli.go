@@ -10,6 +10,7 @@ import (
 
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/api"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/config"
+	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/daemon"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/policy"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/primitives"
 	"github.com/muckiware/MuckiSafeAgentPlugin/agent/internal/version"
@@ -18,6 +19,7 @@ import (
 const usage = `usage:
   mucki-agent --version
   mucki-agent config validate [--config PATH]
+  mucki-agent run [--config PATH]
 `
 
 // Run dispatches args (without the program name).
@@ -28,24 +30,44 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	case len(args) >= 2 && args[0] == "config" && args[1] == "validate":
 		return validate(args[2:], stdout, stderr)
+	case len(args) >= 1 && args[0] == "run":
+		return runAgent(args[1:], stderr)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
 }
 
-// validate loads the configuration, the secret and the policy and builds the
-// API client without contacting the server, so the same start-up checks and
-// warnings apply as for the running agent.
-func validate(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("config validate", flag.ContinueOnError)
+// runAgent starts the long-running agent; logs go to stderr (journald).
+func runAgent(args []string, stderr io.Writer) int {
+	path, ok := configFlag("run", args, stderr)
+	if !ok {
+		return 2
+	}
+	return daemon.Main(daemon.Options{ConfigPath: path}, stderr)
+}
+
+// configFlag parses the only option of the config-reading commands.
+func configFlag(name string, args []string, stderr io.Writer) (string, bool) {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	path := flags.String("config", config.DefaultPath, "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 0 {
 		fmt.Fprint(stderr, usage)
+		return "", false
+	}
+	return *path, true
+}
+
+// validate loads the configuration, the secret and the policy and builds the
+// API client without contacting the server, so the same start-up checks and
+// warnings apply as for the running agent.
+func validate(args []string, stdout, stderr io.Writer) int {
+	path, ok := configFlag("config validate", args, stderr)
+	if !ok {
 		return 2
 	}
-	cfg, err := config.Load(*path)
+	cfg, err := config.Load(path)
 	if err != nil {
 		fmt.Fprintln(stderr, "config validate:", err)
 		return 1
@@ -71,6 +93,6 @@ func validate(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "config validate:", err)
 		return 1
 	}
-	fmt.Fprintln(stdout, "configuration valid:", *path)
+	fmt.Fprintln(stdout, "configuration valid:", path)
 	return 0
 }

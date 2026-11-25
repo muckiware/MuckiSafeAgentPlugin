@@ -91,7 +91,7 @@ func TestConfigValidateFailsClosed(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{{}, {"frobnicate"}, {"config"}, {"config", "validate", "--unknown"}, {"config", "validate", "extra"}} {
+	for _, args := range [][]string{{}, {"frobnicate"}, {"config"}, {"config", "validate", "--unknown"}, {"config", "validate", "extra"}, {"run", "extra"}, {"run", "--unknown"}} {
 		if code, _, stderr := run(args...); code != 2 || !strings.Contains(stderr, "usage") {
 			t.Errorf("%v: code %d, stderr %q", args, code, stderr)
 		}
@@ -104,6 +104,19 @@ func TestConfigValidateRejectsAnInvalidPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code, _, stderr := run("config", "validate", "--config", path); code != 1 || !strings.Contains(stderr, "policy") {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+}
+
+func TestRunRefusesToStartWithAnUnsafeConfig(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := run("run", "--config", path)
+
+	if code != 1 || !strings.Contains(stderr, "agent cannot start") || !strings.Contains(stderr, "permissions 0644 exceed 0600") {
 		t.Fatalf("code %d, stderr %q", code, stderr)
 	}
 }

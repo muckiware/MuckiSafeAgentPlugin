@@ -843,7 +843,9 @@ Vertikale Scheiben:
 
 **Repository:** `MuckiSafeAgentPlugin`
 
-**Files:** fünf Workflows, `.gitattributes`, Composer archive excludes, Go packaging/systemd.
+**Files:** fünf Workflows, `.gitattributes`, Composer archive excludes, Go packaging/systemd, `agent/internal/daemon` mit CLI-Befehl `mucki-agent run`.
+
+Nachtrag bei der Umsetzung: Tasks 18–21 lieferten alle Bausteine, aber keinen Dienst-Einstiegspunkt. `mucki-agent run [--config PATH]` setzt sie zusammen: Config, Secret, Policy und Journal werden vor dem ersten Request verifiziert geladen (sonst Exit 1 ohne Kontakt zur Control Plane), danach Journal-Recovery, Host-Heartbeat, Wakeup-Watcher und Claim-Loop. SIGTERM/SIGINT beendet ohne neue Claims; ein laufender Job wird innerhalb der Shutdown-Grace gestoppt, journalisiert und abgeschlossen (Exit 0). SIGHUP lädt die Policy atomar neu und behält bei Fehlern den bisherigen Snapshot. Ein nicht mehr akzeptierter Schlüssel beendet den Agenten mit Exit 1.
 
 `agent/packaging/install.sh` erzeugt idempotent Config-/State-Verzeichnisse als `root:root` und `/var/lib/mucki-agent/wakeup` als `root:33`, Mode `0770`; es prüft, dass GID 33 zum Container-`www-data`-Vertrag passt, bevor es systemd startet.
 
