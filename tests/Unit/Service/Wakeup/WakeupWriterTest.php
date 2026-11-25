@@ -140,6 +140,28 @@ final class WakeupWriterTest extends TestCase
         self::assertStringContainsString(self::JOB, $this->logger->records[0]);
     }
 
+    /**
+     * Found by the Task-32 stack smoke test: the first log call autoloads the
+     * logger class, whose PHP 8.4 deprecation must not become an exception
+     * that aborts the backup, because the write failure is only a hint.
+     */
+    public function testANoticeRaisedWhileLoggingTheFailureIsNotThrown(): void
+    {
+        $logger = new class () extends AbstractLogger {
+            public int $calls = 0;
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->calls++;
+                trigger_error('Implicitly marking parameter $throwable as nullable is deprecated', E_USER_DEPRECATED);
+            }
+        };
+        $writer = new WakeupWriter($this->directory . '/absent', $logger);
+
+        self::assertFalse(@$writer->signal(self::JOB_HEX));
+        self::assertSame(1, $logger->calls);
+    }
+
     public function testWrittenWakeupsAreRecognisedByTheStaleCleanup(): void
     {
         $this->writer()->signal(self::JOB_HEX);

@@ -40,22 +40,44 @@ final class WakeupWriter
         $final = $this->directory . '/' . $uuid . '.ready';
         $temporary = $final . '.tmp';
 
+        $failure = $this->writeAtomically($temporary, $final, $uuid);
+        if ($failure === null) {
+            return true;
+        }
+        // Logged after the error handler is restored: a notice raised while
+        // logging (e.g. a deprecation when the logger class is autoloaded)
+        // must never turn this hint into an exception that aborts the backup.
+        $this->logger->warning(
+            sprintf('Wakeup for job %s not written, polling will pick it up: %s', $uuid, $failure->getMessage()),
+            PluginDefaults::DEFAULT_LOGGER_CONFIG
+        );
+
+        return false;
+    }
+
+    /**
+     * Writes and renames the wakeup; returns the failure instead of throwing.
+     * Only warnings and notices of the file functions become exceptions,
+     * deprecations of unrelated code stay untouched.
+     */
+    private function writeAtomically(string $temporary, string $final, string $uuid): ?\Throwable
+    {
         set_error_handler(static function (int $severity, string $message): never {
             throw new \ErrorException($message, 0, $severity);
-        });
+        }, E_WARNING | E_NOTICE);
         try {
             $this->writeTemporary($temporary, $uuid);
             rename($temporary, $final);
 
-            return true;
+            return null;
         } catch (\ErrorException | \RuntimeException $exception) {
-            $this->removeTemporary($temporary);
-            $this->logger->warning(
-                sprintf('Wakeup for job %s not written, polling will pick it up: %s', $uuid, $exception->getMessage()),
-                PluginDefaults::DEFAULT_LOGGER_CONFIG
-            );
+            try {
+                $this->removeTemporary($temporary);
+            } catch (\ErrorException) {
+                // The leftover is harmless: the next write replaces it.
+            }
 
-            return false;
+            return $exception;
         } finally {
             restore_error_handler();
         }

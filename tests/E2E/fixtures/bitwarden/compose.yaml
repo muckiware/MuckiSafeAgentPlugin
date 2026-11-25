@@ -1,0 +1,44 @@
+# Bitwarden MSSQL of the Linux service E2E (Task 32), started by
+# scenarios/bitwarden.sh with --env-file $WORK_DIR/bitwarden/bitwarden.env.
+#
+# Mirrors the mssql service of Bitwarden's generated docker-compose.yml:
+# container name bitwarden-mssql, Express edition, SA password from the
+# environment and the backup directory bwdata/mssql/backups mounted at
+# /etc/bitwarden/mssql/backups, where /backup-db.sh writes its .BAK files.
+#
+# Deviations from the official deployment, all of them test-only:
+#   - the image is the pinned Microsoft base image (images.lock); the
+#     official bitwarden/mssql image adds only /backup-db.sh and
+#     /backup-db.sql, which are mounted read-only from $WORK_DIR instead;
+#   - data and log live in a named volume, not below bwdata, so the policy
+#     root holds exactly the fixture seed and its manifest stays comparable;
+#   - /run/muwa-e2e is the read-only control directory of the fault
+#     injection (stall, artifact), see backup-db.sh.
+#
+# The image is published for linux/amd64 only: Bitwarden runs on amd64 only.
+name: muwa-e2e-bitwarden
+
+services:
+  mssql:
+    image: "${BITWARDEN_MSSQL_IMAGE:?pinned in tests/E2E/images.lock}"
+    platform: linux/amd64
+    container_name: bitwarden-mssql
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: "${BW_SA_PASSWORD:?generated per run}"
+      # Name used by the original backup-db.sh.
+      SA_PASSWORD: "${BW_SA_PASSWORD:?generated per run}"
+      # sqlcmd reads the password from here, so it never appears in argv.
+      SQLCMDPASSWORD: "${BW_SA_PASSWORD:?generated per run}"
+    volumes:
+      - mssql:/var/opt/mssql
+      - "${BW_POLICY_ROOT:?}/bwdata/mssql/backups:/etc/bitwarden/mssql/backups"
+      - "${BW_E2E_DIR:?}/mssql/backup-db.sh:/backup-db.sh:ro"
+      - "${BW_E2E_DIR:?}/mssql/backup-db.sql:/backup-db.sql:ro"
+      - "${BW_E2E_DIR:?}/control:/run/muwa-e2e:ro"
+
+volumes:
+  mssql:

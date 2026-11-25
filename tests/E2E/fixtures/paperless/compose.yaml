@@ -1,0 +1,107 @@
+# Pinned Paperless-ngx reference stack of the Linux service E2E (Task 32),
+# started by tests/E2E/scenarios/paperless.sh as its own compose project
+# (muwa-e2e-paperless). Documented start state of contracts/paperless.json:
+# web, MariaDB, Valkey, Gotenberg and Tika running, web on 127.0.0.1:8091
+# (container port 8000), database reachable as paperless-db:3306.
+#
+# Images come only from tests/E2E/images.lock (exported by load_pins).
+# Secrets are generated per run by the scenario into PAPERLESS_E2E_ENV_DIR
+# (below WORK_DIR, mode 0600); nothing secret lives in this file.
+#
+# Paperless keeps its own state in named volumes: its consumer, Celery beat
+# and logger write into data/media/consume, which would break the frozen
+# fixture end state ("seed tree exactly as before"). The policy roots
+# /data/dokumente/* hold the fixture seed, exactly like the agent reference
+# test (agent/internal/primitives/reference_paperless_test.go).
+services:
+  broker:
+    image: "${PAPERLESS_VALKEY_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  paperless-db:
+    image: "${PAPERLESS_MARIADB_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+    env_file:
+      - "${PAPERLESS_E2E_ENV_DIR:?set by scenarios/paperless.sh}/db.env"
+    environment:
+      MARIADB_DATABASE: paperless
+      MARIADB_USER: paperless
+    volumes:
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      start_period: 60s
+      retries: 60
+
+  gotenberg:
+    image: "${PAPERLESS_GOTENBERG_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+
+  tika:
+    image: "${PAPERLESS_TIKA_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+
+  webserver:
+    image: "${PAPERLESS_WEBSERVER_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+      gotenberg:
+        condition: service_started
+      tika:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8091:8000"
+    # web.env: database password, secret key, admin account and, only for
+    # the "success with HTTP 200" case, PAPERLESS_AUTO_LOGIN_USERNAME.
+    env_file:
+      - "${PAPERLESS_E2E_ENV_DIR:?set by scenarios/paperless.sh}/web.env"
+    environment:
+      PAPERLESS_REDIS: redis://broker:6379
+      PAPERLESS_DBENGINE: mariadb
+      PAPERLESS_DBHOST: paperless-db
+      PAPERLESS_DBPORT: "3306"
+      PAPERLESS_DBNAME: paperless
+      PAPERLESS_DBUSER: paperless
+      PAPERLESS_TIKA_ENABLED: "1"
+      PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://gotenberg:3000
+      PAPERLESS_TIKA_ENDPOINT: http://tika:9998
+      USERMAP_UID: "1000"
+      USERMAP_GID: "1000"
+    volumes:
+      - data:/usr/src/paperless/data
+      - media:/usr/src/paperless/media
+      - export:/usr/src/paperless/export
+      - consume:/usr/src/paperless/consume
+    # No -L: the login redirect (302) counts as healthy, like the agent's
+    # service.wait-http, which never follows redirects.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "--max-time", "5", "-o", "/dev/null", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 10s
+      start_period: 300s
+      retries: 30
+
+volumes:
+  data:
+  media:
+  export:
+  consume:
+  dbdata:
+  redisdata:

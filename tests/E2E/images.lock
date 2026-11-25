@@ -1,5 +1,4 @@
-# Evidence-only, untested inventory; live-host and E2E execution were waived.
-# Immutable OCI image references selected for future Gate-B E2E fixtures.
+# Immutable OCI image references of the Linux service E2E (Task 32).
 # Digests pin the manifest/index returned by the registry for the exact tag.
 # No latest/release/major-only tag is permitted here.
 
@@ -15,3 +14,6 @@ PAPERLESS_MARIADB_IMAGE=docker.io/library/mariadb:12.0.2@sha256:607835cd628b78e2
 PAPERLESS_VALKEY_IMAGE=docker.io/valkey/valkey:9.0.0-alpine@sha256:bef37d06d4856710973ee31dd1eac1482e4c8e6e7b847f999ad25433e646587b
 PAPERLESS_GOTENBERG_IMAGE=docker.io/gotenberg/gotenberg:8.34@sha256:67097317623a503ba2a6a7e9ae8db6929a1f7e1bbd88077bacf2d325fbdab923
 PAPERLESS_TIKA_IMAGE=docker.io/apache/tika:3.3.1.0@sha256:90b7fa1dc018434075fce9e1d9b88b1e3d0ea6979d0cf86e116c79a8073ae973
+
+CADDY_IMAGE=docker.io/library/caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+MUCKISAFE_BASE_IMAGE=ghcr.io/muckiware/muckisafe:v0.2.5@sha256:a502d1db48db75f7b9d5960b1777027a6500ba3d4ee0a9c2b87b50fc329bc427

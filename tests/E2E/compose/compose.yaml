@@ -1,0 +1,43 @@
+# E2E override of MuckiSafe's own docker-compose.yml (checked out at
+# MUCKISAFE_COMPOSE_REF from tests/E2E/versions.env). The system under test
+# keeps everything of the real compose file — including the global wakeup
+# mount /var/run/mucki-agent/wakeup of app and scheduler from Task 30 — and
+# only gets:
+#   - the image under test (MUWA_E2E_APP_IMAGE: source build or released
+#     tag@sha256, see setup.sh);
+#   - a host directory for the restic repositories;
+#   - a scheduler that runs messenger and scheduled tasks every minute;
+#   - a TLS reverse proxy with a local CA, so the agent talks HTTPS by
+#     default exactly as documented (the CA is added to the host trust store).
+# The scenario's backup sources are added by setup.sh as a generated
+# override (read-only, same path as on the host).
+services:
+  app:
+    image: "${MUWA_E2E_APP_IMAGE:?set by setup.sh}"
+    volumes:
+      - "${BACKUP_REPOS_HOST_DIR:?set by setup.sh}:/var/backups/muckisafe"
+
+  scheduler:
+    image: "${MUWA_E2E_APP_IMAGE:?set by setup.sh}"
+    environment:
+      MESSENGER_CRON: "* * * * *"
+      SCHEDULED_TASK_CRON: "* * * * *"
+    volumes:
+      - "${BACKUP_REPOS_HOST_DIR:?set by setup.sh}:/var/backups/muckisafe"
+
+  caddy:
+    image: "${CADDY_IMAGE:?pinned in tests/E2E/images.lock}"
+    restart: unless-stopped
+    # Caddy's local CA issues the certificate; the Host header is passed on
+    # unchanged, X-Forwarded-* are trusted via SYMFONY_TRUSTED_PROXIES.
+    command: ["caddy", "reverse-proxy", "--from", "https://${HTTPS_HOST:?}:443", "--to", "app:80", "--internal-certs"]
+    ports:
+      - "127.0.0.1:${HTTPS_PORT:?}:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      app:
+        condition: service_started
+
+volumes:
+  caddy-data:

@@ -1,0 +1,29 @@
+# E2E source mode: the pinned MuckiSafe base image plus this plugin from the
+# working tree, installed through Composer like the released image does it
+# (Packagist is replaced by a path repository). The build context contains
+# only `git archive` output, i.e. exactly the plugin distribution: no agent/,
+# no tests/, no CI files. Every other package keeps the base image's locked
+# version (no dependency updates), so Facility stays at the pinned release.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+COPY plugin /opt/mucki-safe-agent-plugin
+
+WORKDIR /var/www/html
+RUN set -eux; \
+    export COMPOSER_HOME=/tmp/composer; \
+    facility_before=$(composer show --locked muckiware/facility-plugin | sed -n 's/^versions *: \* *//p'); \
+    composer config repositories.mucki-safe-agent-plugin \
+        '{"type": "path", "url": "/opt/mucki-safe-agent-plugin", "options": {"symlink": false}}'; \
+    composer require --no-interaction --no-scripts --update-no-dev \
+        "muckiware/mucki-safe-agent-plugin:*@dev"; \
+    composer dump-autoload --no-dev --optimize; \
+    facility_after=$(composer show --locked muckiware/facility-plugin | sed -n 's/^versions *: \* *//p'); \
+    if [ "$facility_before" != "$facility_after" ]; then \
+        echo "Facility changed from $facility_before to $facility_after" >&2; exit 1; \
+    fi; \
+    if find vendor/muckiware/mucki-safe-agent-plugin \( -name '*.go' -o -name go.mod -o -name 'mucki-agent*' \) -print -quit | grep -q .; then \
+        echo "Go sources or the agent binary reached the plugin package" >&2; exit 1; \
+    fi; \
+    chown -R www-data:www-data vendor composer.json composer.lock; \
+    rm -rf /opt/mucki-safe-agent-plugin /tmp/composer
