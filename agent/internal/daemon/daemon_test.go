@@ -357,7 +357,7 @@ func TestStartFailsClosedBeforeAnyRequestOnUnsafeFiles(t *testing.T) {
 
 			code := waitExit(t, start(options(t, h, s), &logs), 5*time.Second)
 
-			if code != 1 || !strings.Contains(logs.String(), "agent cannot start") || !strings.Contains(logs.String(), c.reason) {
+			if code != ExitConfig || !strings.Contains(logs.String(), "agent cannot start") || !strings.Contains(logs.String(), c.reason) {
 				t.Fatalf("exit code %d, logs:\n%s", code, logs.String())
 			}
 			if plane.count("/heartbeat")+plane.count("/jobs/claim") != 0 {
@@ -386,7 +386,7 @@ func TestRevokedKeyEndsTheAgentWithAFailure(t *testing.T) {
 
 	code := waitExit(t, start(options(t, h, s), &logs), 10*time.Second)
 
-	if code != 1 || !strings.Contains(logs.String(), "not accepted") {
+	if code != ExitConfig || !strings.Contains(logs.String(), "not accepted") {
 		t.Fatalf("exit code %d, logs:\n%s", code, logs.String())
 	}
 }

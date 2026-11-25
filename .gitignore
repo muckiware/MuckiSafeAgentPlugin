@@ -6,3 +6,4 @@
 *.DS_Store
 /agent/coverage.out
 /src/Resources/public/
+/agent/.e2e-build/

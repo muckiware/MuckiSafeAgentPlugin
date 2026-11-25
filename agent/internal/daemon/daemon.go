@@ -43,6 +43,11 @@ type Options struct {
 	ShutdownGrace time.Duration
 }
 
+// ExitConfig (EX_CONFIG) ends the agent for a reason a restart cannot fix:
+// an unsafe or invalid installation, or a key the control plane no longer
+// accepts. The systemd unit lists it in RestartPreventExitStatus.
+const ExitConfig = 78
+
 // startupError marks failures before the agent contacted the control plane.
 type startupError struct{ err error }
 
@@ -50,7 +55,8 @@ func (e startupError) Error() string { return e.err.Error() }
 func (e startupError) Unwrap() error { return e.err }
 
 // Main runs the agent with signal handling and returns the exit code:
-// 0 after a graceful shutdown, 1 if the start or the run failed.
+// 0 after a graceful shutdown, ExitConfig for a failed start or a rejected
+// key, 1 for any other failure.
 func Main(opts Options, logs io.Writer) int {
 	logger := newLogger(logs)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -64,7 +70,10 @@ func Main(opts Options, logs io.Writer) int {
 	switch {
 	case errors.As(err, &startup):
 		logger.Error("agent cannot start", "error", err)
-		return 1
+		return ExitConfig
+	case errors.Is(err, api.ErrUnauthenticated):
+		logger.Error("agent key is not accepted, provision or rotate the agent", "error", err)
+		return ExitConfig
 	case err != nil:
 		logger.Error("agent stopped with an error", "error", err)
 		return 1
