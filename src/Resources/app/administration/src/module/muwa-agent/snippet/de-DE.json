@@ -1,0 +1,103 @@
+{
+  "muwa-agent": {
+    "general": {
+      "mainMenuLabel": "Mucki Agent",
+      "description": "Host-Agenten für MuckiSafe-Backups verwalten"
+    },
+    "tabs": {
+      "hosts": "Agenten",
+      "actions": "Actions"
+    },
+    "host": {
+      "nameLabel": "Name",
+      "statusLabel": "Status",
+      "versionLabel": "Version",
+      "lastSeenAtLabel": "Letzte Sichtung",
+      "capabilitiesLabel": "Capabilities",
+      "keyIdLabel": "Key-ID",
+      "neverSeen": "Noch nie",
+      "emptyState": "Es sind noch keine Agenten provisioniert.",
+      "provisionButton": "Agent provisionieren",
+      "rotateAction": "Secret rotieren",
+      "revokeAction": "Widerrufen",
+      "rotateConfirmTitle": "Secret rotieren",
+      "rotateConfirmText": "Für „{name}“ wird ein neues Secret erzeugt. Das bisherige Secret ist sofort ungültig, bis der Agent auf dem Host das neue Secret erhält.",
+      "revokeConfirmTitle": "Agent widerrufen",
+      "revokeConfirmText": "„{name}“ wird dauerhaft widerrufen und kann sich danach nicht mehr anmelden. Ein Widerruf lässt sich nicht rückgängig machen.",
+      "revokeSuccess": "„{name}“ wurde widerrufen.",
+      "status": {
+        "active": "Aktiv",
+        "pending": "Wartet auf erste Verbindung",
+        "disabled": "Deaktiviert",
+        "revoked": "Widerrufen"
+      }
+    },
+    "provision": {
+      "title": "Agent provisionieren",
+      "description": "Legt einen neuen Agenten an und erzeugt Key-ID und Secret. Das Secret wird nur ein einziges Mal angezeigt.",
+      "namePlaceholder": "z. B. nas-01"
+    },
+    "secret": {
+      "provisionTitle": "Agent provisioniert",
+      "rotateTitle": "Neues Secret erzeugt",
+      "onceWarning": "Das Secret wird nur jetzt angezeigt und kann später nicht erneut abgerufen werden. Bewahre es sicher auf, bevor du diesen Dialog schließt.",
+      "keyIdLabel": "Key-ID",
+      "keyIdHelp": "Wert für server.keyId in der Agent-Konfiguration.",
+      "secretLabel": "Secret",
+      "secretHelp": "Inhalt der unter server.secretFile konfigurierten Datei (nur für root lesbar).",
+      "confirmStored": "Ich habe das Secret sicher hinterlegt.",
+      "done": "Fertig"
+    },
+    "errors": {
+      "invalid_request": "Die Anfrage ist ungültig.",
+      "operation_failed": "Die Aktion ist fehlgeschlagen. Details stehen im Log.",
+      "invalid_definition": "Die Action-Definition ist ungültig.",
+      "technical_name_taken": "Der technische Name ist bereits vergeben.",
+      "action_not_found": "Die Action existiert nicht mehr."
+    },
+    "action": {
+      "createButton": "Action anlegen",
+      "createTitle": "Neue Action",
+      "emptyState": "Es sind noch keine Actions angelegt.",
+      "generalCardTitle": "Allgemein",
+      "definitionCardTitle": "Definition",
+      "labelLabel": "Bezeichnung",
+      "technicalNameLabel": "Technischer Name",
+      "technicalNameHelp": "Eindeutige ID aus Kleinbuchstaben, Ziffern, - und _ (max. 64 Zeichen). Kann nach dem Anlegen nicht mehr geändert werden.",
+      "enabledLabel": "Aktiv",
+      "idempotencyClassLabel": "Idempotenzklasse",
+      "idempotencyClassHelp": "safe: darf nach Lease-Ablauf erneut ausgeführt werden. non_retryable: wird nie automatisch wiederholt, ein Abbruch endet als unknown.",
+      "idempotencyClasses": {
+        "safe": "safe (wiederholbar)",
+        "non_retryable": "non_retryable (nicht wiederholbar)"
+      },
+      "retryPolicyLabel": "Retry",
+      "retryPolicies": {
+        "safe": "Bis zu 3 Versuche bei Lease-Ablauf",
+        "non_retryable": "Keine automatische Wiederholung"
+      },
+      "defaultTimeoutSecondsLabel": "Standard-Timeout (Sekunden)",
+      "maxTimeoutSecondsLabel": "Maximales Timeout (Sekunden)",
+      "maxTimeoutSecondsHelp": "Obergrenze für das Phasenbudget eines Repository-Hooks mit dieser Action (45 bis 1800 Sekunden).",
+      "requiredCapabilitiesLabel": "Benötigte Capabilities",
+      "seconds": "{seconds} s",
+      "definitionLabel": "Action-Definition (JSON, DSL v1)",
+      "definitionHint": "Die Definition wird serverseitig streng gegen die Action-DSL v1 geprüft und kanonisch gespeichert. Capabilities und Hash werden daraus abgeleitet. Parameter sind in v1 nicht vorgesehen.",
+      "definitionErrorTitle": "Die Definition ist ungültig",
+      "validationSuccessTitle": "Die Definition ist gültig",
+      "hashLabel": "SHA-256",
+      "validateButton": "Definition prüfen",
+      "saveSuccess": "Die Action wurde gespeichert.",
+      "fieldErrors": {
+        "technicalName": "Ungültig oder bereits vergeben. Erlaubt: a-z, 0-9, - und _, beginnend mit einem Buchstaben.",
+        "label": "Bitte eine Bezeichnung mit höchstens 255 Zeichen angeben.",
+        "enabled": "Ungültiger Wert.",
+        "definition": "Die Definition fehlt.",
+        "defaultTimeoutSeconds": "Muss zwischen 45 Sekunden und dem maximalen Timeout liegen.",
+        "maxTimeoutSeconds": "Muss zwischen 45 und 1800 Sekunden liegen.",
+        "idempotencyClass": "Ungültige Idempotenzklasse.",
+        "id": "Ungültige Action-ID."
+      }
+    }
+  }
+}

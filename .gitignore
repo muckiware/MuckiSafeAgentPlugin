@@ -5,3 +5,4 @@
 /var/
 *.DS_Store
 /agent/coverage.out
+/src/Resources/public/

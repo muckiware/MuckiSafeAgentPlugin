@@ -1,0 +1,34 @@
+{% block muwa_agent_index %}
+    <sw-page class="muwa-agent-index">
+        {% block muwa_agent_index_smart_bar_header %}
+            <template #smart-bar-header>
+                <h2>{{ $t('muwa-agent.general.mainMenuLabel') }}</h2>
+            </template>
+        {% endblock %}
+
+        {% block muwa_agent_index_content %}
+            <template #content>
+                <sw-card-view>
+                    {% block muwa_agent_index_tabs %}
+                        <sw-tabs position-identifier="muwa-agent-index-tabs">
+                            {% block muwa_agent_index_tab_hosts %}
+                                <sw-tabs-item :route="{ name: 'muwa.agent.index.hosts' }">
+                                    {{ $t('muwa-agent.tabs.hosts') }}
+                                </sw-tabs-item>
+                            {% endblock %}
+                            {% block muwa_agent_index_tab_actions %}
+                                <sw-tabs-item :route="{ name: 'muwa.agent.index.actions' }">
+                                    {{ $t('muwa-agent.tabs.actions') }}
+                                </sw-tabs-item>
+                            {% endblock %}
+                        </sw-tabs>
+                    {% endblock %}
+
+                    {% block muwa_agent_index_router_view %}
+                        <router-view />
+                    {% endblock %}
+                </sw-card-view>
+            </template>
+        {% endblock %}
+    </sw-page>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% block muwa_agent_host_list %}
+    <div class="muwa-agent-host-list">
+        {% block muwa_agent_host_list_toolbar %}
+            <div class="muwa-agent-toolbar">
+                <sw-button
+                    v-tooltip="{
+                        message: $t('sw-privileges.tooltip.warning'),
+                        disabled: canProvision,
+                        showOnDisabledElements: true
+                    }"
+                    variant="primary"
+                    :disabled="!canProvision"
+                    @click="showProvisionModal = true"
+                >
+                    {{ $t('muwa-agent.host.provisionButton') }}
+                </sw-button>
+            </div>
+        {% endblock %}
+
+        {% block muwa_agent_host_list_grid %}
+            <sw-entity-listing
+                v-if="hosts && hosts.total > 0"
+                :is-loading="isLoading"
+                :items="hosts"
+                :repository="repository"
+                :columns="columns"
+                :show-actions="true"
+                :show-selection="false"
+                :show-settings="true"
+                :allow-inline-edit="false"
+                :allow-edit="false"
+                :allow-delete="false"
+                identifier="muwa-agent-host-list"
+            >
+                <template #column-status="{ item }">
+                    <sw-label
+                        :variant="statusVariant(item)"
+                        appearance="pill"
+                        size="small"
+                    >
+                        {{ $t(`muwa-agent.host.status.${hostStatus(item)}`) }}
+                    </sw-label>
+                </template>
+
+                <template #column-lastSeenAt="{ item }">
+                    {{ item.lastSeenAt ? dateFilter(item.lastSeenAt, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : $t('muwa-agent.host.neverSeen') }}
+                </template>
+
+                <template #column-capabilities="{ item }">
+                    {{ formatCapabilities(item) }}
+                </template>
+
+                {% block muwa_agent_host_list_grid_actions %}
+                    <template #actions="{ item }">
+                        <sw-context-menu-item
+                            :disabled="!canProvision || !!item.revokedAt"
+                            @click="onRequestConfirmation('rotate', item)"
+                        >
+                            {{ $t('muwa-agent.host.rotateAction') }}
+                        </sw-context-menu-item>
+                        <sw-context-menu-item
+                            variant="danger"
+                            :disabled="!canProvision || !!item.revokedAt"
+                            @click="onRequestConfirmation('revoke', item)"
+                        >
+                            {{ $t('muwa-agent.host.revokeAction') }}
+                        </sw-context-menu-item>
+                    </template>
+                {% endblock %}
+            </sw-entity-listing>
+
+            <sw-empty-state
+                v-else-if="hosts && !isLoading"
+                :title="$t('muwa-agent.host.emptyState')"
+                :absolute="false"
+                icon="regular-server"
+            />
+        {% endblock %}
+
+        {% block muwa_agent_host_list_confirm_modal %}
+            <sw-modal
+                v-if="confirmation"
+                :title="$t(`muwa-agent.host.${confirmation.type}ConfirmTitle`)"
+                variant="small"
+                @modal-close="onCancelConfirmation"
+            >
+                <p>{{ $t(`muwa-agent.host.${confirmation.type}ConfirmText`, { name: confirmation.host.name }) }}</p>
+
+                <template #modal-footer>
+                    <sw-button
+                        size="small"
+                        :disabled="isConfirming"
+                        @click="onCancelConfirmation"
+                    >
+                        {{ $t('global.default.cancel') }}
+                    </sw-button>
+                    <sw-button
+                        size="small"
+                        :variant="confirmation.type === 'revoke' ? 'danger' : 'primary'"
+                        :is-loading="isConfirming"
+                        @click="onConfirm"
+                    >
+                        {{ $t(`muwa-agent.host.${confirmation.type}Action`) }}
+                    </sw-button>
+                </template>
+            </sw-modal>
+        {% endblock %}
+
+        {% block muwa_agent_host_list_provision_modal %}
+            <muwa-agent-provision-modal
+                v-if="showProvisionModal"
+                @provisioned="onProvisioned"
+                @error="notifyApiError"
+                @close="showProvisionModal = false"
+            />
+        {% endblock %}
+
+        {% block muwa_agent_host_list_secret_modal %}
+            <muwa-agent-secret-modal
+                v-if="issuedSecret"
+                :issued="issuedSecret"
+                @close="onCloseSecret"
+            />
+        {% endblock %}
+    </div>
+{% endblock %}

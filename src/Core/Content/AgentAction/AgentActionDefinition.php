@@ -16,6 +16,7 @@ use Shopware\Core\Framework\DataAbstractionLayer\FieldCollection;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\BlobField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\BoolField;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\CreatedAtField;
+use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\ApiAware;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\PrimaryKey;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\Flag\Required;
 use Shopware\Core\Framework\DataAbstractionLayer\Field\IdField;
@@ -52,7 +53,8 @@ final class AgentActionDefinition extends EntityDefinition
             (new StringField('label', 'label'))->addFlags(new Required()),
             (new BoolField('enabled', 'enabled'))->addFlags(new Required()),
             (new LongTextField('definition', 'definition'))->addFlags(new Required()),
-            (new BlobField('definition_hash', 'definitionHash'))->addFlags(new Required()),
+            // Raw SHA-256 bytes cannot be JSON-encoded by the API; the action routes expose the hex hash instead.
+            (new BlobField('definition_hash', 'definitionHash'))->addFlags(new Required())->removeFlag(ApiAware::class),
             (new LongTextField('parameter_schema', 'parameterSchema')),
             (new JsonField('required_capabilities', 'requiredCapabilities'))->addFlags(new Required()),
             (new IntField('default_timeout_seconds', 'defaultTimeoutSeconds'))->addFlags(new Required()),

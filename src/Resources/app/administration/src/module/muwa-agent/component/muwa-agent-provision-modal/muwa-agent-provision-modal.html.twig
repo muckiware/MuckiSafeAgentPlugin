@@ -1,0 +1,40 @@
+{% block muwa_agent_provision_modal %}
+    <sw-modal
+        class="muwa-agent-provision-modal"
+        :title="$t('muwa-agent.provision.title')"
+        variant="small"
+        @modal-close="$emit('close')"
+    >
+        <p class="muwa-agent-provision-modal__description">
+            {{ $t('muwa-agent.provision.description') }}
+        </p>
+
+        <sw-text-field
+            v-model:value="name"
+            :label="$t('muwa-agent.host.nameLabel')"
+            :placeholder="$t('muwa-agent.provision.namePlaceholder')"
+            :maxlength="255"
+            required
+            @keyup.enter="onProvision"
+        />
+
+        <template #modal-footer>
+            <sw-button
+                size="small"
+                :disabled="isLoading"
+                @click="$emit('close')"
+            >
+                {{ $t('global.default.cancel') }}
+            </sw-button>
+            <sw-button
+                size="small"
+                variant="primary"
+                :disabled="!isValid"
+                :is-loading="isLoading"
+                @click="onProvision"
+            >
+                {{ $t('muwa-agent.host.provisionButton') }}
+            </sw-button>
+        </template>
+    </sw-modal>
+{% endblock %}

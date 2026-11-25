@@ -1,0 +1,71 @@
+{% block muwa_agent_action_list %}
+    <div class="muwa-agent-action-list">
+        {% block muwa_agent_action_list_toolbar %}
+            <div class="muwa-agent-toolbar">
+                <sw-button
+                    v-tooltip="{
+                        message: $t('sw-privileges.tooltip.warning'),
+                        disabled: canEdit,
+                        showOnDisabledElements: true
+                    }"
+                    variant="primary"
+                    :disabled="!canEdit"
+                    :router-link="{ name: 'muwa.agent.actionCreate' }"
+                >
+                    {{ $t('muwa-agent.action.createButton') }}
+                </sw-button>
+            </div>
+        {% endblock %}
+
+        {% block muwa_agent_action_list_grid %}
+            <sw-entity-listing
+                v-if="actions && actions.total > 0"
+                :is-loading="isLoading"
+                :items="actions"
+                :repository="repository"
+                :columns="columns"
+                :show-actions="true"
+                :show-selection="false"
+                :show-settings="true"
+                :allow-inline-edit="false"
+                :allow-delete="false"
+                detail-route="muwa.agent.actionDetail"
+                identifier="muwa-agent-action-list"
+            >
+                <template #column-enabled="{ item }">
+                    <sw-icon
+                        v-if="item.enabled"
+                        name="regular-checkmark-xs"
+                        size="16px"
+                        class="is--active"
+                    />
+                    <sw-icon
+                        v-else
+                        name="regular-times-s"
+                        size="16px"
+                        class="is--inactive"
+                    />
+                </template>
+
+                <template #column-idempotencyClass="{ item }">
+                    {{ $t(`muwa-agent.action.idempotencyClasses.${item.idempotencyClass}`) }}
+                </template>
+
+                <template #column-maxTimeoutSeconds="{ item }">
+                    {{ $t('muwa-agent.action.seconds', { seconds: item.maxTimeoutSeconds }) }}
+                </template>
+
+                <template #column-requiredCapabilities="{ item }">
+                    {{ formatCapabilities(item) }}
+                </template>
+            </sw-entity-listing>
+
+            <sw-empty-state
+                v-else-if="actions && !isLoading"
+                :title="$t('muwa-agent.action.emptyState')"
+                :absolute="false"
+                icon="regular-code"
+            />
+        {% endblock %}
+    </div>
+{% endblock %}
