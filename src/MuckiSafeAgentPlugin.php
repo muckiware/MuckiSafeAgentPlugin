@@ -34,10 +34,7 @@ class MuckiSafeAgentPlugin extends Plugin
             return;
         }
 
-        $connection = $this->container->get(Connection::class);
-        if (!$connection instanceof Connection) {
-            throw new \RuntimeException('Doctrine connection is unavailable.');
-        }
+        $connection = $this->service(Connection::class);
 
         $tables = array_merge(
             Migration1795132800CreateAgentSchema::TABLES,
@@ -56,8 +53,21 @@ class MuckiSafeAgentPlugin extends Plugin
      */
     public function activate(ActivateContext $activateContext): void
     {
-        /** @var FacilityDependencyGuard $guard */
-        $guard = $this->container->get(FacilityDependencyGuard::class);
-        $guard->assertFacilityActive();
+        $this->service(FacilityDependencyGuard::class)->assertFacilityActive();
+    }
+
+    /**
+     * @template T of object
+     * @param class-string<T> $id
+     * @return T
+     */
+    private function service(string $id): object
+    {
+        $service = $this->container?->get($id);
+        if (!$service instanceof $id) {
+            throw new \RuntimeException(sprintf('Service %s is unavailable.', $id));
+        }
+
+        return $service;
     }
 }

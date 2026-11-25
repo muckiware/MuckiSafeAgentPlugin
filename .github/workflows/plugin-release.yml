@@ -1,0 +1,147 @@
+# Publishes a plugin release (tag vX.Y.Z, version from composer.json):
+#   1. builds the plugin ZIP with `git archive` of the tag (export-ignore keeps
+#      the Go agent, tests and CI out) and verifies it with
+#      tests/Artifacts/plugin-archive-test.sh before attaching it;
+#   2. waits until Packagist lists the version (optionally triggers the
+#      Packagist update API when PACKAGIST_USERNAME/PACKAGIST_API_TOKEN exist);
+#   3. sends the repository dispatch `muckisafe-agent-plugin-release` with
+#      {package, ref} to muckiware/MuckiSafe, which pins exactly that version.
+#
+# The Linux agent is released separately by agent-release.yml (agent-v*).
+# Called by create-release.yml; rerun a failed release with "Run workflow".
+#
+# Secrets: MUCKISAFE_DISPATCH_TOKEN (fine-grained PAT, contents: write on
+# muckiware/MuckiSafe); without it the dispatch is skipped with a warning.
+
+name: Plugin release
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag (vX.Y.Z)'
+        required: true
+        type: string
+    secrets:
+      MUCKISAFE_DISPATCH_TOKEN:
+        required: false
+      PACKAGIST_USERNAME:
+        required: false
+      PACKAGIST_API_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Plugin release tag (vX.Y.Z)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE: muckiware/mucki-safe-agent-plugin
+  EVENT_TYPE: muckisafe-agent-plugin-release
+  TAG: ${{ inputs.tag || github.event.release.tag_name }}
+
+jobs:
+  archive:
+    name: Plugin ZIP
+    # Agent releases (agent-v*) and pre-releases are not plugin releases.
+    if: github.event_name != 'release' || (!github.event.release.prerelease && startsWith(github.event.release.tag_name, 'v'))
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: "Checkout ${{ env.TAG }}"
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: "Tag must match composer.json"
+        id: version
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::${TAG} is not a plugin release tag (vX.Y.Z)."
+            exit 1
+          fi
+          VERSION="$(jq -r '.version // empty' composer.json)"
+          if [ "v${VERSION#v}" != "${TAG}" ]; then
+            echo "::error::composer.json version ${VERSION} does not match ${TAG}."
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: "Build plugin ZIP"
+        run: git archive --format=zip --prefix=MuckiSafeAgentPlugin/ -o "MuckiSafeAgentPlugin-${TAG}.zip" "${TAG}"
+
+      - name: "Plugin ZIP contains no agent, Go, test or CI files"
+        run: tests/Artifacts/plugin-archive-test.sh "MuckiSafeAgentPlugin-${TAG}.zip"
+
+      - name: "Attach ZIP to the release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha256sum "MuckiSafeAgentPlugin-${TAG}.zip" > "MuckiSafeAgentPlugin-${TAG}.zip.sha256"
+          gh release view "${TAG}" > /dev/null 2>&1 || gh release create "${TAG}" --title "${TAG}" --generate-notes
+          gh release upload "${TAG}" "MuckiSafeAgentPlugin-${TAG}.zip" "MuckiSafeAgentPlugin-${TAG}.zip.sha256" --clobber
+
+  muckisafe:
+    name: Packagist and MuckiSafe dispatch
+    needs: archive
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.archive.outputs.tag }}
+      DISPATCH_TOKEN: ${{ secrets.MUCKISAFE_DISPATCH_TOKEN }}
+      PACKAGIST_USERNAME: ${{ secrets.PACKAGIST_USERNAME }}
+      PACKAGIST_API_TOKEN: ${{ secrets.PACKAGIST_API_TOKEN }}
+    steps:
+      - name: "Trigger the Packagist update"
+        if: env.PACKAGIST_USERNAME != '' && env.PACKAGIST_API_TOKEN != ''
+        run: |
+          set -euo pipefail
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            "https://packagist.org/api/update-package?username=${PACKAGIST_USERNAME}&apiToken=${PACKAGIST_API_TOKEN}" \
+            -d "{\"repository\":{\"url\":\"https://github.com/${GITHUB_REPOSITORY}\"}}" > /dev/null
+
+      - name: "Wait until Packagist lists the version"
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          for ATTEMPT in $(seq 1 30); do
+            if curl -fsS "https://repo.packagist.org/p2/${PACKAGE}.json" \
+              | jq -e --arg v "${VERSION}" 'any(.packages[][]; (.version | ltrimstr("v")) == $v)' > /dev/null; then
+              echo "${PACKAGE} ${VERSION} is on Packagist."
+              exit 0
+            fi
+            echo "${PACKAGE} ${VERSION} is not on Packagist yet (attempt ${ATTEMPT}/30) - waiting."
+            sleep 20
+          done
+          echo "::error::${PACKAGE} ${VERSION} did not appear on Packagist within 10 minutes. Re-run this workflow once it is listed."
+          exit 1
+
+      - name: "Dispatch ${{ env.EVENT_TYPE }} to MuckiSafe"
+        run: |
+          set -euo pipefail
+          if [ -z "${DISPATCH_TOKEN}" ]; then
+            echo "::warning::MUCKISAFE_DISPATCH_TOKEN is not set - skipping the MuckiSafe dispatch."
+            exit 0
+          fi
+          PAYLOAD="$(jq -nc --arg type "${EVENT_TYPE}" --arg package "${PACKAGE}" --arg ref "${TAG}" \
+            '{event_type: $type, client_payload: {package: $package, ref: $ref}}')"
+          HTTP_CODE="$(curl -sS -o dispatch-response.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/muckiware/MuckiSafe/dispatches \
+            -d "${PAYLOAD}")"
+          if [ "${HTTP_CODE}" -ge 200 ] && [ "${HTTP_CODE}" -lt 300 ]; then
+            echo "MuckiSafe dispatch accepted (HTTP ${HTTP_CODE}): ${PAYLOAD}"
+          else
+            echo "::error::MuckiSafe dispatch failed (HTTP ${HTTP_CODE}):"
+            cat dispatch-response.json
+            exit 1
+          fi

@@ -1,0 +1,69 @@
+# MuckiSafe host agent. Installed by install.sh as
+# /etc/systemd/system/mucki-agent.service; do not edit this copy, use drop-ins.
+#
+# The agent runs as root (it controls systemd units and docker), but inside a
+# read-only file system: only its state directory and the paths of the local
+# policy are writable (filesystem.acl.read sets ACLs below the path aliases,
+# the write pipeline and retention write to the destinations). install.sh
+# generates the latter as mucki-agent.service.d/10-destinations.conf from the
+# policy (`mucki-agent policy writable-paths --format systemd`); rerun
+# install.sh after adding a path or destination to the policy.
+
+[Unit]
+Description=MuckiSafe host agent
+Documentation=https://github.com/muckiware/MuckiSafeAgentPlugin
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/mucki-agent run --config /etc/mucki-agent/config.yaml
+# SIGHUP reloads the policy; an invalid policy keeps the previous snapshot.
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Exit 78: unsafe or invalid installation, or a key the control plane no
+# longer accepts. A restart cannot fix either, so systemd does not retry.
+Restart=on-failure
+RestartSec=10s
+RestartPreventExitStatus=78
+
+# Shutdown stops new claims; a running job may continue for 60 seconds, is
+# then stopped (SIGTERM, 5 seconds grace, SIGKILL), journalled and completed.
+# Only the agent receives SIGTERM so it can stop its action processes in
+# order; anything left over is killed when the budget ends.
+KillMode=mixed
+TimeoutStopSec=90s
+
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/mucki-agent/state
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+# No RestrictSUIDSGID: systemd cannot inspect the mode of openat2() and
+# therefore blocks the call (ENOSYS), but every descriptor-relative access of
+# the agent uses openat2(RESOLVE_BENEATH|RESOLVE_NO_SYMLINKS). Published
+# backups are limited to mode 0644 by the policy instead.
+LockPersonality=true
+MemoryDenyWriteExecute=true
+# HTTP(S) to the control plane, Unix sockets for systemctl and docker.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# chown/ACLs of published backups, reading foreign files, checking
+# readability as the backup principal (setfsuid/setfsgid), stopping the
+# action process groups.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_FOWNER CAP_SETUID CAP_SETGID CAP_KILL
+
+[Install]
+WantedBy=multi-user.target

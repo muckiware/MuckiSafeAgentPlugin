@@ -174,3 +174,17 @@ func TestConcurrentReloadsAndReadsAreRaceFree(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestAliasesListsASectionSorted(t *testing.T) {
+	body := "version: 1\nservices:\n  zeta:\n    unit: zeta.service\n  alpha:\n    unit: alpha.service\n"
+	p, err := Load(writePolicy(t, body, 0o644), decoders)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(p.Aliases("services"), ","); got != "alpha,zeta" {
+		t.Fatalf("aliases %q", got)
+	}
+	if got := p.Aliases("containers"); len(got) != 0 {
+		t.Fatalf("absent section must list nothing, got %v", got)
+	}
+}

@@ -91,7 +91,8 @@ func TestConfigValidateFailsClosed(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{{}, {"frobnicate"}, {"config"}, {"config", "validate", "--unknown"}, {"config", "validate", "extra"}} {
+	for _, args := range [][]string{{}, {"frobnicate"}, {"config"}, {"config", "validate", "--unknown"}, {"config", "validate", "extra"}, {"run", "extra"}, {"run", "--unknown"},
+		{"policy"}, {"policy", "writable-paths", "extra"}, {"policy", "writable-paths", "--format", "json"}} {
 		if code, _, stderr := run(args...); code != 2 || !strings.Contains(stderr, "usage") {
 			t.Errorf("%v: code %d, stderr %q", args, code, stderr)
 		}
@@ -105,5 +106,98 @@ func TestConfigValidateRejectsAnInvalidPolicy(t *testing.T) {
 	}
 	if code, _, stderr := run("config", "validate", "--config", path); code != 1 || !strings.Contains(stderr, "policy") {
 		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+}
+
+func TestRunRefusesToStartWithAnUnsafeConfig(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := run("run", "--config", path)
+
+	if code != 78 || !strings.Contains(stderr, "agent cannot start") || !strings.Contains(stderr, "permissions 0644 exceed 0600") {
+		t.Fatalf("code %d, stderr %q", code, stderr)
+	}
+}
+
+const destinationPolicy = `version: 1
+paths:
+  odd:
+    root: /srv/back"up %h\dir
+  library:
+    root: /opt/immich/library
+destinations:
+  dumps:
+    pathAlias: library
+    directory: backups
+    prefix: d-
+    suffix: .sql.gz
+    owner: 33
+    group: 33
+    mode: "0640"
+    maximumBytes: 100
+    maximumKeep: 1
+  odd:
+    pathAlias: odd
+    directory: .
+    prefix: o-
+    suffix: .sql.gz
+    owner: 0
+    group: 0
+    mode: "0600"
+    maximumBytes: 100
+    maximumKeep: 1
+`
+
+func writePolicy(t *testing.T, config, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(filepath.Dir(config), "policy.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPolicyWritablePathsPrintsThePathRootsAndDestinations(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	writePolicy(t, path, destinationPolicy)
+
+	code, stdout, stderr := run("policy", "writable-paths", "--config", path)
+
+	want := "/opt/immich/library\n/srv/back\"up %h\\dir\n"
+	if code != 0 || stdout != want || stderr != "" {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+func TestPolicyWritablePathsFormatsASystemdDropIn(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	writePolicy(t, path, destinationPolicy)
+
+	code, stdout, _ := run("policy", "writable-paths", "--config", path, "--format", "systemd")
+
+	// Missing directories are tolerated ("-"), quotes and backslashes are
+	// C-escaped and "%" is not a specifier.
+	want := "ReadWritePaths=\"-/opt/immich/library\"\nReadWritePaths=\"-/srv/back\\\"up %%h\\\\dir\"\n"
+	if code != 0 || stdout != want {
+		t.Fatalf("code %d, stdout %q, want %q", code, stdout, want)
+	}
+}
+
+func TestPolicyWritablePathsRejectsPathsSystemdCannotExpress(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	writePolicy(t, path, strings.Replace(destinationPolicy, "/opt/immich/library", "/opt/immich/lib\trary", 1))
+
+	if code, stdout, stderr := run("policy", "writable-paths", "--config", path, "--format", "systemd"); code != 1 || stdout != "" || !strings.Contains(stderr, "control character") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+func TestPolicyWritablePathsFailsClosedOnAnInvalidPolicy(t *testing.T) {
+	path := setup(t, "  url: https://backup.example.org\n", secret)
+	writePolicy(t, path, "version: 1\nshell:\n  any: /bin/sh\n")
+
+	if code, stdout, stderr := run("policy", "writable-paths", "--config", path); code != 1 || stdout != "" || !strings.Contains(stderr, "policy") {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }

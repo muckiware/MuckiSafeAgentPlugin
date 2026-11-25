@@ -843,7 +843,18 @@ Vertikale Scheiben:
 
 **Repository:** `MuckiSafeAgentPlugin`
 
-**Files:** fünf Workflows, `.gitattributes`, Composer archive excludes, Go packaging/systemd.
+**Files:** fünf Workflows, `.gitattributes`, Composer archive excludes, Go packaging/systemd, `agent/internal/daemon` mit CLI-Befehl `mucki-agent run`.
+
+Nachtrag bei der Umsetzung: Tasks 18–21 lieferten alle Bausteine, aber keinen Dienst-Einstiegspunkt. `mucki-agent run [--config PATH]` setzt sie zusammen: Config, Secret, Policy und Journal werden vor dem ersten Request verifiziert geladen (sonst Exit 1 ohne Kontakt zur Control Plane), danach Journal-Recovery, Host-Heartbeat, Wakeup-Watcher und Claim-Loop. SIGTERM/SIGINT beendet ohne neue Claims; ein laufender Job wird innerhalb der Shutdown-Grace gestoppt, journalisiert und abgeschlossen (Exit 0). SIGHUP lädt die Policy atomar neu und behält bei Fehlern den bisherigen Snapshot. Ein nicht mehr akzeptierter Schlüssel beendet den Agenten mit Exit 78 (`EX_CONFIG`), ebenso jeder Startabbruch; die Unit verhindert dafür per `RestartPreventExitStatus=78` eine Neustartschleife.
+
+Nachtrag Packaging (vom E2E-Härtungstest unter echtem systemd belegt):
+- `ProtectSystem=strict`; beschreibbar sind nur das State-Verzeichnis und die Pfade der lokalen Policy. `filesystem.acl.read` setzt ACLs unterhalb jeder `paths`-Wurzel, Write-Pipeline und Retention schreiben in die `destinations`. `mucki-agent policy writable-paths --format systemd` leitet daraus das Drop-in `mucki-agent.service.d/10-destinations.conf` ab, das `install.sh` bei jedem Lauf neu schreibt.
+- Kein `RestrictSUIDSGID`: systemd sperrt damit `openat2()` vollständig (ENOSYS), auf dem jeder descriptor-relative Zugriff des Agenten beruht. Veröffentlichte Backups bleiben über die Policy auf höchstens `0644` begrenzt.
+- Artefakttests: `tests/Artifacts/plugin-archive-test.sh` prüft `git archive` (export-ignore) und `composer archive` (`archive.exclude`); `agent/packaging/build-release.sh` baut das Agent-Release-Verzeichnis, `agent/packaging/tests/binary-artifacts-test.sh` prüft es (`file`, `readelf`, `go version -m`, `ldd`, `--version`, `config validate`, `SHA256SUMS`) nativ auf `ubuntu-24.04` und `ubuntu-24.04-arm`.
+- `go-tests.yml` führt `go test` als root aus: die Primitive-Tests brauchen `chown`, `setgroups` und `setfsuid` wie der Agent selbst. `composer validate` läuft mit `--no-check-version`, weil `create-release.yml` das `version`-Feld liest.
+- Releases: Das Plugin bleibt bei `vX.Y.Z` aus `composer.json` (`create-release.yml` → `plugin-release.yml`: ZIP aus `git archive` mit Archivtest, Packagist, Dispatch `muckisafe-agent-plugin-release` mit `{package, ref}`). Der Agent hat eigene Tags `agent-vX.Y.Z` (`agent-release.yml`: reproduzierbarer Tarball `mucki-agent-X.Y.Z-linux.tar.gz` + `.sha256`, Artefaktprüfung auf frischen amd64-/arm64-Runnern, E2E mit genau diesen Binaries, erst dann das GitHub-Release); Packagist ignoriert diese Tags.
+- `e2e-linux.yml` läuft nativ auf `ubuntu-24.04` und `ubuntu-24.04-arm`; der self-hosted Runner `[self-hosted, linux, arm64, muckisafe-e2e]` wird über die Repository-Variable `MUCKISAFE_E2E_ARM64_RUNNER=true` zugeschaltet, sobald er registriert ist (Task 32 ergänzt dort die Dienstszenarien).
+- `agent/packaging/tests/hardening-e2e.sh` ist der E2E-Härtungstest (Fake-Control-Plane `agent/internal/e2e/fakeplane`); lokal läuft er per `agent/packaging/tests/run-in-container.sh` in einem privilegierten systemd-Container.
 
 `agent/packaging/install.sh` erzeugt idempotent Config-/State-Verzeichnisse als `root:root` und `/var/lib/mucki-agent/wakeup` als `root:33`, Mode `0770`; es prüft, dass GID 33 zum Container-`www-data`-Vertrag passt, bevor es systemd startet.
 

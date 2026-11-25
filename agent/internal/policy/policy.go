@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"sync/atomic"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,16 @@ type Policy struct {
 func (p *Policy) Entry(section, alias string) (any, bool) {
 	entry, ok := p.sections[section][alias]
 	return entry, ok
+}
+
+// Aliases lists the aliases of a section in sorted order.
+func (p *Policy) Aliases(section string) []string {
+	aliases := make([]string, 0, len(p.sections[section]))
+	for alias := range p.sections[section] {
+		aliases = append(aliases, alias)
+	}
+	slices.Sort(aliases)
+	return aliases
 }
 
 // Load reads and validates the policy file.
