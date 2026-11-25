@@ -4,7 +4,11 @@
 # disposable, privileged Ubuntu container with systemd as PID 1. Containers
 # of the test run on the host's Docker daemon through its socket.
 #
-#   agent/packaging/tests/run-in-container.sh
+#   agent/packaging/tests/run-in-container.sh [--release]
+#
+# --release builds the release directory with build-release.sh and tests its
+# binary, so install.sh also verifies it against SHA256SUMS (like CI does
+# for a release).
 set -euo pipefail
 
 AGENT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -19,7 +23,13 @@ rm -rf "$build"
 mkdir -p "$build"
 trap 'docker rm -f "$NAME" >/dev/null 2>&1 || true; rm -rf "$build"' EXIT
 
-(cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$build/mucki-agent" ./cmd/mucki-agent)
+if [ "${1:-}" = --release ]; then
+    "$AGENT_DIR/packaging/build-release.sh" 0.0.0-local "$build/release" >/dev/null
+    binary=/build/release/mucki-agent-linux-$arch
+else
+    (cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$build/mucki-agent" ./cmd/mucki-agent)
+    binary=/build/mucki-agent
+fi
 (cd "$AGENT_DIR" && CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -o "$build/fakeplane" ./internal/e2e/fakeplane)
 
 docker build -q -t "$IMAGE" - >/dev/null <<'EOF'
@@ -44,4 +54,4 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-docker exec "$NAME" /agent/packaging/tests/hardening-e2e.sh --binary /build/mucki-agent --fakeplane /build/fakeplane
+docker exec "$NAME" /agent/packaging/tests/hardening-e2e.sh --binary "$binary" --fakeplane /build/fakeplane

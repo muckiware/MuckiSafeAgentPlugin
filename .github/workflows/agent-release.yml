@@ -1,0 +1,159 @@
+# Releases the Linux host agent separately from the plugin, on a tag
+# agent-vX.Y.Z (Packagist ignores these tags, the plugin keeps vX.Y.Z):
+#   1. build: static binaries for amd64/arm64 (CGO_ENABLED=0, -trimpath),
+#      installer, uninstaller, systemd unit, example config and policy and
+#      SHA256SUMS, packed as mucki-agent-X.Y.Z-linux.tar.gz (+ .sha256);
+#   2. verify: on clean native amd64 and arm64 runners the tarball is checked
+#      (static ELF, build settings, checksums, ldd, --version, config validate);
+#   3. e2e: the hardened systemd E2E runs with exactly these binaries;
+#   4. publish: only then the GitHub release agent-vX.Y.Z is created.
+#
+# Hosts download the tarball, check its .sha256, unpack it and run
+# install.sh, which verifies SHA256SUMS again. Go is never needed on a host.
+
+name: Agent release
+
+on:
+  push:
+    tags:
+      - 'agent-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing agent tag (agent-vX.Y.Z)'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Build release tarball
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: "Checkout ${{ env.TAG }}"
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: "Version from the tag"
+        id: version
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "${TAG}" | grep -Eq '^agent-v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::${TAG} is not an agent release tag (agent-vX.Y.Z[-pre])."
+            exit 1
+          fi
+          VERSION="${TAG#agent-v}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          case "${VERSION}" in *-*) echo "prerelease=true" ;; *) echo "prerelease=false" ;; esac >> "${GITHUB_OUTPUT}"
+
+      - name: "Install Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: "Build"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          agent/packaging/build-release.sh "${VERSION}" "dist/mucki-agent-${VERSION}"
+          # Reproducible archive: fixed order, owner and timestamps.
+          tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$(git log -1 --format=%ct)" \
+            -C dist -czf "dist/mucki-agent-${VERSION}-linux.tar.gz" "mucki-agent-${VERSION}"
+          (cd dist && sha256sum "mucki-agent-${VERSION}-linux.tar.gz" > "mucki-agent-${VERSION}-linux.tar.gz.sha256")
+
+      - name: "Upload tarball"
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-release
+          path: |
+            dist/mucki-agent-${{ steps.version.outputs.version }}-linux.tar.gz
+            dist/mucki-agent-${{ steps.version.outputs.version }}-linux.tar.gz.sha256
+          if-no-files-found: error
+
+  verify:
+    name: Verify artifacts (${{ matrix.runner }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: "Checkout ${{ env.TAG }}"
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: "Install Go (for go version -m only)"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+
+      - name: "Download tarball"
+        uses: actions/download-artifact@v8
+        with:
+          name: agent-release
+          path: release
+
+      - name: "Check tarball and release directory"
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum --check --strict "mucki-agent-${VERSION}-linux.tar.gz.sha256")
+          mkdir unpacked
+          tar -xzf "release/mucki-agent-${VERSION}-linux.tar.gz" -C unpacked
+          agent/packaging/tests/binary-artifacts-test.sh "unpacked/mucki-agent-${VERSION}" "${VERSION}"
+
+  e2e:
+    name: Linux E2E with the release binaries
+    needs: build
+    uses: ./.github/workflows/e2e-linux.yml
+    with:
+      agent-artifact: agent-release
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  publish:
+    name: Publish ${{ inputs.tag || github.ref_name }}
+    needs: [ build, verify, e2e ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "Download tarball"
+        uses: actions/download-artifact@v8
+        with:
+          name: agent-release
+          path: release
+
+      - name: "Create GitHub release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          FLAGS=(--repo "${GITHUB_REPOSITORY}" --title "MuckiSafe Agent ${VERSION}" --latest=false)
+          [ "${PRERELEASE}" != "true" ] || FLAGS+=(--prerelease)
+          NOTES="Linux host agent ${VERSION} (amd64, arm64). Verify the tarball with its .sha256 file, unpack it and run install.sh as root; see README."
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            echo "Release ${TAG} exists - replacing its assets."
+          else
+            gh release create "${TAG}" "${FLAGS[@]}" --verify-tag --notes "${NOTES}"
+          fi
+          gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber release/*

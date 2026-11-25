@@ -214,10 +214,35 @@ test_wakeup_contract_is_checked_before_anything_is_installed() {
     ok "install.sh refuses a container without www-data GID 33 before installing anything"
 }
 
+# Only for a release directory (SHA256SUMS next to the binary): a modified
+# binary is refused before anything is installed.
+test_release_checksums_are_verified() {
+    local dir copy
+    dir=$(dirname -- "$BINARY")
+    if [ ! -f "$dir/SHA256SUMS" ]; then
+        echo "# skip: $BINARY is not part of a release directory"
+        return
+    fi
+    copy=$(mktemp -d)
+    cp -a "$dir/." "$copy/"
+    printf 'x' >> "$copy/$(basename -- "$BINARY")"
+    if "$PACKAGING_DIR/install.sh" --binary "$copy/$(basename -- "$BINARY")" >/tmp/muwa-e2e-install.log 2>&1; then
+        rm -rf "$copy"
+        fail "install.sh accepted a binary that does not match SHA256SUMS"
+    fi
+    rm -rf "$copy"
+    grep -q "does not match SHA256SUMS" /tmp/muwa-e2e-install.log || fail "unexpected refusal: $(cat /tmp/muwa-e2e-install.log)"
+    [ ! -e /usr/local/bin/mucki-agent ] || fail "a modified binary was installed"
+    ok "install.sh refuses a release binary that does not match SHA256SUMS"
+}
+
 test_install_without_secret_does_not_start() {
     "$PACKAGING_DIR/install.sh" --binary "$BINARY" >/tmp/muwa-e2e-install.log 2>&1 || fail "first install failed: $(cat /tmp/muwa-e2e-install.log)"
     grep -q "container $APP_CONTAINER: www-data has GID 33" /tmp/muwa-e2e-install.log || fail "wakeup container was not detected: $(cat /tmp/muwa-e2e-install.log)"
     grep -q "not started" /tmp/muwa-e2e-install.log || fail "install.sh should wait for the provisioning"
+    if [ -f "$(dirname -- "$BINARY")/SHA256SUMS" ]; then
+        grep -q "checksum of $(basename -- "$BINARY") verified" /tmp/muwa-e2e-install.log || fail "install.sh did not verify SHA256SUMS"
+    fi
     ! agent_active || fail "agent must not run before it is provisioned"
     [ "$(stat -c '%u:%g %a' /var/lib/mucki-agent/wakeup)" = "0:33 770" ] || fail "wakeup directory: $(stat -c '%U:%G %a' /var/lib/mucki-agent/wakeup)"
     [ "$(stat -c '%u:%g %a' /var/lib/mucki-agent/state)" = "0:0 700" ] || fail "state directory: $(stat -c '%U:%G %a' /var/lib/mucki-agent/state)"
@@ -383,6 +408,7 @@ main() {
     cleanup
     prepare_host
     test_wakeup_contract_is_checked_before_anything_is_installed
+    test_release_checksums_are_verified
     test_install_without_secret_does_not_start
     test_provisioned_install_starts_the_hardened_service
     test_the_sandbox_is_read_only_except_state_and_policy_paths

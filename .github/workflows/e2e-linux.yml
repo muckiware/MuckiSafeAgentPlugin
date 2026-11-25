@@ -1,0 +1,122 @@
+# Linux E2E of the packaged agent under the hardened systemd unit
+# (agent/packaging/tests/hardening-e2e.sh): install.sh, sandbox, every V1
+# host function, refused starts, reload, graceful stop and uninstall.
+#
+# Architectures, all native (QEMU never replaces a native run):
+#   - amd64 and arm64 on GitHub-hosted runners;
+#   - arm64 on the self-hosted runner [self-hosted, linux, arm64, muckisafe-e2e]
+#     once the repository variable MUCKISAFE_E2E_ARM64_RUNNER is "true"; the
+#     service scenarios of Task 32 run there as well.
+#
+# agent-release.yml calls it with the release tarball, so exactly the
+# published binaries are tested; otherwise the agent is built from source.
+
+name: Linux E2E
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+    paths:
+      - 'agent/**'
+      - '.github/workflows/e2e-linux.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      agent-artifact:
+        description: 'Name of the uploaded artifact with the agent release tarball'
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'Ref whose tests and fake control plane are used (default: the triggering commit)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  hosted:
+    name: Hardening E2E (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps: &e2e-steps
+      - name: "Checkout"
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: "Install Go"
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - name: "Download the release tarball"
+        if: inputs.agent-artifact != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.agent-artifact }}
+          path: release
+
+      - name: "Prepare agent and fake control plane"
+        env:
+          AGENT_ARTIFACT: ${{ inputs.agent-artifact }}
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in x86_64) ARCH=amd64 ;; aarch64) ARCH=arm64 ;; *) echo "unsupported $(uname -m)"; exit 1 ;; esac
+          mkdir -p e2e
+          if [ -n "${AGENT_ARTIFACT}" ]; then
+            (cd release && sha256sum --check --strict ./*.tar.gz.sha256)
+            tar -xzf release/*.tar.gz -C e2e --strip-components=1
+            (cd e2e && sha256sum --check --strict SHA256SUMS)
+            # The listed name, so install.sh verifies it against SHA256SUMS.
+            AGENT_BINARY="e2e/mucki-agent-linux-${ARCH}"
+          else
+            AGENT_BINARY=e2e/mucki-agent
+            (cd agent && CGO_ENABLED=0 go build -trimpath -o ../e2e/mucki-agent ./cmd/mucki-agent)
+          fi
+          mkdir -p tools
+          (cd agent && CGO_ENABLED=0 go build -trimpath -o ../tools/fakeplane ./internal/e2e/fakeplane)
+          "${AGENT_BINARY}" --version
+          echo "AGENT_BINARY=${AGENT_BINARY}" >> "${GITHUB_ENV}"
+
+      - name: "Hardening E2E"
+        run: sudo agent/packaging/tests/hardening-e2e.sh --binary "${AGENT_BINARY}" --fakeplane tools/fakeplane
+
+      - name: "Collect logs"
+        if: failure()
+        run: |
+          mkdir -p e2e-logs
+          sudo journalctl -u mucki-agent.service --no-pager | tee e2e-logs/mucki-agent.journal > /dev/null || true
+          sudo cp /tmp/muwa-e2e-*.log e2e-logs/ 2>/dev/null || true
+          sudo chown -R "$(id -u)" e2e-logs
+
+      - name: "Upload logs"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-logs-${{ matrix.runner }}
+          path: e2e-logs
+
+  self-hosted-arm64:
+    name: Hardening E2E (self-hosted arm64)
+    if: vars.MUCKISAFE_E2E_ARM64_RUNNER == 'true'
+    strategy:
+      matrix:
+        # one entry, so the shared steps name their log artifact alike
+        runner: [ self-hosted-arm64 ]
+    runs-on: [ self-hosted, linux, arm64, muckisafe-e2e ]
+    timeout-minutes: 30
+    steps: *e2e-steps
