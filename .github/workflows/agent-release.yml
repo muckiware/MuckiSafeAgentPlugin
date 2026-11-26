@@ -1,5 +1,7 @@
-# Releases the Linux host agent separately from the plugin, on a tag
-# agent-vX.Y.Z (Packagist ignores these tags, the plugin keeps vX.Y.Z):
+# Releases the Linux host agent on a tag agent-vX.Y.Z (Packagist ignores
+# these tags, the plugin keeps vX.Y.Z). Normally called by create-release.yml
+# on every merge main -> release, with the same version as the plugin
+# (composer.json); a pushed agent-v* tag or "Run workflow" also starts it:
 #   1. build: static binaries for amd64/arm64 (CGO_ENABLED=0, -trimpath),
 #      installer, uninstaller, systemd unit, example config and policy and
 #      SHA256SUMS, packed as mucki-agent-X.Y.Z-linux.tar.gz (+ .sha256);
@@ -16,6 +18,12 @@ on:
   push:
     tags:
       - 'agent-v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Existing agent tag (agent-vX.Y.Z)'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:

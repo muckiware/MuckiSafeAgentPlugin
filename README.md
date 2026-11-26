@@ -103,6 +103,20 @@ Shopware root with this plugin's configuration.
 `--fresh` discards the cached Shopware workspace and rebuilds it from
 scratch.
 
+## Releases
+
+Merging `main` into `release` (regular merge, no squash) releases plugin and
+agent with the version from `composer.json`:
+
+| Tag | Workflow | Release assets |
+|---|---|---|
+| `vX.Y.Z` | `plugin-release.yml` | `MuckiSafeAgentPlugin-vX.Y.Z.zip` (+ `.sha256`), Packagist, MuckiSafe dispatch |
+| `agent-vX.Y.Z` | `agent-release.yml` | `mucki-agent-X.Y.Z-linux.tar.gz` (+ `.sha256`): static amd64/arm64 binaries, `install.sh`, `uninstall.sh`, systemd unit, example config and policy |
+
+Both are started by `create-release.yml`. An agent release can also be
+built on its own by pushing an `agent-vX.Y.Z` tag or via "Run workflow"
+on `agent-release.yml` with an existing tag.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
