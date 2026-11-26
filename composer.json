@@ -1,7 +1,7 @@
 {
 	"name" : "muckiware/mucki-safe-agent-plugin",
 	"description" : "MuckiSafe Agent plugin for Shopware 6 - agent control plane for MuckiSafe host actions",
-	"version": "v0.1.0",
+	"version": "v0.2.0",
 	"keywords": [
 		"shopware6",
 		"muckisafe",
