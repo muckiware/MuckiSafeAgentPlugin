@@ -279,9 +279,11 @@ scenario_up() {
     jf_wait_healthy
     assert_eq "$(jq -r '.Version' "$JF_WORK/health.json")" "$JELLYFIN_REFERENCE_VERSION" "Jellyfin version"
     wait_for 60 "Jellyfin database" test -f "$JF_DATA_ROOT/data/jellyfin.db"
+    # As root: this checks the mount only. The scheduler runs as www-data and
+    # may not traverse the jellyfin-owned root before the agent's read ACL.
     local service
     for service in app scheduler; do
-        stack exec -T "$service" test -d "$JF_DATA_ROOT/data" ||
+        stack exec -T -u root "$service" test -d "$JF_DATA_ROOT/data" ||
             die "$service does not see $JF_DATA_ROOT through its bind mount"
     done
 }

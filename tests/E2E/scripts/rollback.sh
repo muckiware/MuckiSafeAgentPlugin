@@ -3,7 +3,8 @@
 # stack (docs/rollout-runbook.md). Sourced by run-linux-e2e.sh after
 # inject-failure.sh; rollback_check is the orchestrator step `rollback`.
 #
-# Flow: a backup is stalled in its first hooked phase, `muwa:agent:rollback
+# Flow: one successful agent run leaves the production state (read ACLs
+# kept), then a backup is stalled in its first hooked phase, `muwa:agent:rollback
 # start` drains it (running -> cancel_requested, the agent stops on the next
 # lease heartbeat), the status gate reports no open job, the run ends
 # terminal. While the switch is active a backup creates neither run nor job
@@ -97,6 +98,20 @@ rollback_reset() {
     rollback_hooks_restore || true
 }
 
+# rollback_production_state: the host state a production rollback starts
+# from. One successful agent run whose effects are kept: in production the
+# read ACL of the last run stays (contracts: cleanup.production.retainReadAcl),
+# and the plain Facility backups below depend on it, because during the
+# rollback no agent hook grants it. The E2E resets ACLs after every case, so
+# this run deliberately skips scenario_reset; rollback_check resets at the end.
+rollback_production_state() {
+    scenario_inject "$SCENARIO_SUCCESS_CASE"
+    backup_trigger
+    assert_case "$SCENARIO_SUCCESS_CASE"
+    scenario_assert_effects "$SCENARIO_SUCCESS_CASE"
+    assert_no_open_jobs
+}
+
 no_agent_run_in_flight() {
     [ "$(sql "SELECT COUNT(*) FROM muwa_agent_backup_run WHERE status = 'running'")" = 0 ]
 }
@@ -163,6 +178,7 @@ rollback_check() {
     [ "$(repository_hook_count)" -gt 0 ] || { log "the repository has no agent hooks"; return 1; }
     rollback_console status
     assert_eq "$ROLLBACK_EXIT" 0 "no open job before the rollback"
+    rollback_production_state
     rollback_drain_running_backup
     # Step 4: switch active, hooks still assigned.
     assert_plain_facility_backup "rollback active, hooks assigned"

@@ -15,7 +15,7 @@
 #   --dry-run          print the plan and the cases, change nothing
 #
 # Gate E only accepts --muckisafe-mode release --agent-mode release runs.
-# The host is changed (systemd unit, /etc/hosts, CA store, iptables,
+# The host is changed (systemd unit, /etc/hosts, CA store,
 # /srv/muwa-e2e): run as root on a disposable runner or VM only.
 #
 # Steps: preflight, stack, agent, service, backup, cases (every fixture case),
@@ -120,7 +120,7 @@ preflight() {
     [ "$(host_arch)" = "$E2E_ARCH" ] || die "--arch $E2E_ARCH on a $(host_arch) host: only native runs count"
     [ -d /run/systemd/system ] || die "systemd must be the running init system"
     local tool
-    for tool in docker jq curl git iptables getfacl setfacl setpriv flock sha256sum update-ca-certificates; do
+    for tool in docker jq curl git getfacl setfacl setpriv flock sha256sum update-ca-certificates; do
         command -v "$tool" >/dev/null || die "missing tool: $tool"
     done
     docker compose version >/dev/null || die "docker compose plugin missing"

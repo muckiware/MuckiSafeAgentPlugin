@@ -46,15 +46,27 @@ agent_start() {
     wait_for 60 "agent host active" agent_active
 }
 
-# api_block / api_unblock: the agent's HTTPS connections to the proxy are
-# reset. Matches the original destination port, because published ports are
-# DNATed before the filter table sees them.
+# api_block / api_unblock: the agent's API endpoint (the HTTPS proxy) is
+# stopped, so every request fails at once with "connection refused" and open
+# keep-alive connections are closed. An iptables REJECT on the published port
+# was not reliable on the GitHub runners: the packets were silently dropped,
+# requests hung and completed by TCP retransmission after the unblock, so the
+# agent never saw a failure. The app keeps running (console and the
+# harness's admin API on HTTP_PORT do not use the proxy); the proxy's CA and
+# certificate stay in its volume.
 api_block() {
-    iptables -I OUTPUT -p tcp -m conntrack --ctorigdstport "$HTTPS_PORT" -j REJECT --reject-with tcp-reset
+    stack stop -t 5 caddy >/dev/null 2>&1
 }
 
 api_unblock() {
-    while iptables -D OUTPUT -p tcp -m conntrack --ctorigdstport "$HTTPS_PORT" -j REJECT --reject-with tcp-reset 2>/dev/null; do :; done
+    [ -f "$WORK_DIR/stack.env" ] || return 0
+    stack start caddy >/dev/null 2>&1
+    wait_for 60 "agent API reachable through the proxy again" api_proxy_reachable
+}
+
+# Any HTTP answer counts: only the TLS proxy itself is checked here.
+api_proxy_reachable() {
+    curl -s -o /dev/null --max-time 5 "https://$HTTPS_HOST:$HTTPS_PORT/"
 }
 
 # wakeup_block / wakeup_unblock: www-data can no longer create wakeup files
