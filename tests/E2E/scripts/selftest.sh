@@ -24,7 +24,7 @@ readonly REQUIRED_FUNCTIONS=(
     scenario_hooks scenario_up scenario_down scenario_seed scenario_cases
     scenario_inject scenario_assert_effects scenario_reset scenario_stall
 )
-readonly REQUIRED_SCRIPTS=(run-linux-e2e.sh lib.sh setup.sh trigger-backup.sh inject-failure.sh assert-effects.sh cleanup.sh selftest.sh)
+readonly REQUIRED_SCRIPTS=(run-linux-e2e.sh lib.sh setup.sh trigger-backup.sh inject-failure.sh rollback.sh assert-effects.sh cleanup.sh selftest.sh)
 FAILURES=0
 TMP_DIR=$(mktemp -d)
 readonly TMP_DIR
@@ -202,7 +202,7 @@ check_dry_run() {
                 grep -q '<skipped' "$junit" || fail "bitwarden/arm64 must be reported as skipped"
             else
                 if grep -q "<skipped" "$junit"; then fail "$service/$arch must not be skipped"; fi
-                for step in preflight stack agent service backup cases resilience transport upgrade facility-only cleanup; do
+                for step in preflight stack agent service backup cases resilience transport upgrade facility-only rollback cleanup; do
                     grep -q "^plan $step" "$out.log" || fail "dry run $service/$arch misses plan step $step"
                 done
             fi

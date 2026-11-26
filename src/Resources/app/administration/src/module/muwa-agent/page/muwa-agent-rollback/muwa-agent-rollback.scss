@@ -1,0 +1,56 @@
+.muwa-agent-rollback {
+    &__toolbar {
+        gap: 8px;
+    }
+
+    &__summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 24px;
+    }
+
+    &__polling {
+        font-size: 12px;
+        color: var(--color-darkgray-200, #52667a);
+    }
+
+    &__subtitle {
+        margin: 16px 0 8px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    &__facts {
+        display: grid;
+        grid-template-columns: minmax(160px, max-content) 1fr;
+        gap: 8px 16px;
+        align-items: center;
+        margin-bottom: 12px;
+
+        dt {
+            font-weight: 600;
+        }
+    }
+
+    &__gate {
+        margin-top: 16px;
+        font-weight: 600;
+    }
+
+    &__hint {
+        margin-bottom: 12px;
+        font-size: 12px;
+        color: var(--color-darkgray-200, #52667a);
+    }
+
+    &__modal p {
+        margin-bottom: 12px;
+    }
+
+    &__warning {
+        font-weight: 600;
+        color: var(--color-crimson-500, #de294c);
+    }
+}

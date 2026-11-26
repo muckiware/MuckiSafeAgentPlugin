@@ -1,0 +1,191 @@
+{% block muwa_agent_rollback %}
+    <div class="muwa-agent-rollback">
+        {% block muwa_agent_rollback_toolbar %}
+            <div class="muwa-agent-toolbar muwa-agent-rollback__toolbar">
+                <sw-button
+                    class="muwa-agent-rollback__reload"
+                    :disabled="isLoading"
+                    @click="loadStatus"
+                >
+                    {{ $t('muwa-agent.rollback.reloadButton') }}
+                </sw-button>
+                <sw-button
+                    v-tooltip="{
+                        message: $t('sw-privileges.tooltip.warning'),
+                        disabled: canRollback,
+                        showOnDisabledElements: true
+                    }"
+                    class="muwa-agent-rollback__stop"
+                    :disabled="!canRollback || !isActive"
+                    @click="onRequestConfirmation('stop')"
+                >
+                    {{ $t('muwa-agent.rollback.stopButton') }}
+                </sw-button>
+                <sw-button
+                    v-tooltip="{
+                        message: $t('sw-privileges.tooltip.warning'),
+                        disabled: canRollback,
+                        showOnDisabledElements: true
+                    }"
+                    class="muwa-agent-rollback__start"
+                    variant="critical"
+                    :disabled="!canRollback || !status"
+                    @click="onRequestConfirmation('start')"
+                >
+                    {{ isActive ? $t('muwa-agent.rollback.restartButton') : $t('muwa-agent.rollback.startButton') }}
+                </sw-button>
+            </div>
+        {% endblock %}
+
+        {% block muwa_agent_rollback_status_card %}
+            <sw-card
+                class="muwa-agent-rollback__card"
+                position-identifier="muwaAgentRollbackStatus"
+                :title="$t('muwa-agent.rollback.cardTitle')"
+                :is-loading="isLoading && !status"
+            >
+                <p class="muwa-agent-rollback__hint">
+                    {{ $t('muwa-agent.rollback.description') }}
+                </p>
+
+                <template v-if="status">
+                    {% block muwa_agent_rollback_status_summary %}
+                        <div class="muwa-agent-rollback__summary">
+                            <sw-label
+                                class="muwa-agent-rollback__active"
+                                :variant="isActive ? 'warning' : 'neutral'"
+                                appearance="pill"
+                            >
+                                {{ isActive ? $t('muwa-agent.rollback.activeYes') : $t('muwa-agent.rollback.activeNo') }}
+                            </sw-label>
+                            <sw-label
+                                v-if="isActive"
+                                class="muwa-agent-rollback__ready"
+                                :variant="isReady ? 'success' : 'danger'"
+                                appearance="pill"
+                            >
+                                {{ isReady ? $t('muwa-agent.rollback.readyYes') : $t('muwa-agent.rollback.readyNo') }}
+                            </sw-label>
+                            <span
+                                v-if="shouldPoll"
+                                class="muwa-agent-rollback__polling"
+                            >
+                                {{ $t('muwa-agent.rollback.polling') }}
+                            </span>
+                        </div>
+                    {% endblock %}
+
+                    {% block muwa_agent_rollback_status_facts %}
+                        <dl class="muwa-agent-rollback__facts">
+                            <dt>{{ $t('muwa-agent.rollback.activeLabel') }}</dt>
+                            <dd>{{ isActive ? $t('muwa-agent.rollback.yes') : $t('muwa-agent.rollback.no') }}</dd>
+
+                            <dt>{{ $t('muwa-agent.rollback.startedAtLabel') }}</dt>
+                            <dd>{{ formatDate(status.startedAt) }}</dd>
+
+                            <dt>{{ $t('muwa-agent.rollback.stoppedAtLabel') }}</dt>
+                            <dd>{{ formatDate(status.stoppedAt) }}</dd>
+                        </dl>
+                    {% endblock %}
+
+                    {% block muwa_agent_rollback_open_jobs %}
+                        <h4 class="muwa-agent-rollback__subtitle">
+                            {{ $t('muwa-agent.rollback.openJobsTitle') }}
+                        </h4>
+                        <dl class="muwa-agent-rollback__facts muwa-agent-rollback__open-jobs">
+                            <template
+                                v-for="job in openJobs"
+                                :key="job.state"
+                            >
+                                <dt>
+                                    <sw-label
+                                        :variant="jobStatusVariant(job.state, job.count)"
+                                        appearance="pill"
+                                        size="small"
+                                    >
+                                        {{ $t(`muwa-agent.job.statuses.${job.state}`) }}
+                                    </sw-label>
+                                </dt>
+                                <dd :class="`muwa-agent-rollback__count--${job.state}`">
+                                    {{ job.count }}
+                                </dd>
+                            </template>
+                        </dl>
+                    {% endblock %}
+
+                    {% block muwa_agent_rollback_unknown_jobs %}
+                        <dl class="muwa-agent-rollback__facts">
+                            <dt>
+                                <sw-label
+                                    :variant="unknownJobs > 0 ? 'warning' : 'neutral'"
+                                    appearance="pill"
+                                    size="small"
+                                >
+                                    {{ $t('muwa-agent.job.statuses.unknown') }}
+                                </sw-label>
+                            </dt>
+                            <dd class="muwa-agent-rollback__count--unknown">
+                                {{ unknownJobs }}
+                            </dd>
+                        </dl>
+                        <p class="muwa-agent-rollback__hint">
+                            {{ $t('muwa-agent.rollback.unknownHint') }}
+                        </p>
+                    {% endblock %}
+
+                    {% block muwa_agent_rollback_gate %}
+                        <p class="muwa-agent-rollback__gate">
+                            {{ $t(`muwa-agent.rollback.${gateKey}`) }}
+                        </p>
+                        <p class="muwa-agent-rollback__hint">
+                            {{ $t('muwa-agent.rollback.runbookHint') }}
+                        </p>
+                    {% endblock %}
+                </template>
+            </sw-card>
+        {% endblock %}
+
+        {% block muwa_agent_rollback_confirm_modal %}
+            <sw-modal
+                v-if="confirmation"
+                class="muwa-agent-rollback__modal"
+                :title="$t(`muwa-agent.rollback.${confirmation}ConfirmTitle`)"
+                variant="small"
+                @modal-close="onCancelConfirmation"
+            >
+                <template v-if="confirmation === 'start'">
+                    <p>{{ $t('muwa-agent.rollback.startConfirmText') }}</p>
+                    <p>{{ $t('muwa-agent.rollback.startConfirmJobs') }}</p>
+                    <p class="muwa-agent-rollback__warning">
+                        {{ $t('muwa-agent.rollback.startConfirmRunning') }}
+                    </p>
+                </template>
+                <template v-else>
+                    <p>{{ $t('muwa-agent.rollback.stopConfirmText') }}</p>
+                </template>
+                <p class="muwa-agent-rollback__hint">
+                    {{ $t('muwa-agent.rollback.runbookHint') }}
+                </p>
+
+                <template #modal-footer>
+                    <sw-button
+                        size="small"
+                        :disabled="isConfirming"
+                        @click="onCancelConfirmation"
+                    >
+                        {{ $t('global.default.cancel') }}
+                    </sw-button>
+                    <sw-button
+                        class="muwa-agent-rollback__confirm"
+                        size="small"
+                        :variant="confirmation === 'start' ? 'critical' : 'primary'"
+                        :is-loading="isConfirming"
+                        @click="onConfirm"
+                    >
+                        {{ $t(`muwa-agent.rollback.${confirmation}ConfirmButton`) }}
+                    </sw-button>
+                </template>
+            </sw-modal>
+        {% endblock %}
+    </div>
+{% endblock %}

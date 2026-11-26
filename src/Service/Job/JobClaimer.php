@@ -18,7 +18,10 @@ use MuckiSafeAgentPlugin\Api\JobClaimResponse;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Uuid\Uuid;
 
-/** Atomically selects and leases at most one job for one authenticated host. */
+/**
+ * Atomically selects and leases at most one job for one authenticated host.
+ * Nothing is claimed while the rollback switch (Task 33) is active.
+ */
 final class JobClaimer
 {
     private const LEASE_SECONDS = 30;
@@ -70,6 +73,7 @@ final class JobClaimer
                 . $candidateRestriction
                 . 'AND j.`available_at` <= :serverNow AND j.`execution_deadline` > :serverNow '
                 . 'AND j.`attempt` < j.`max_attempts` '
+                . 'AND NOT EXISTS (SELECT 1 FROM `muwa_agent_rollback` r WHERE r.`active` = 1) '
                 . 'AND EXISTS (SELECT 1 FROM `muwa_agent_action` a '
                 . 'INNER JOIN `muwa_agent_host` h ON h.`id` = j.`target_agent_id` '
                 . 'WHERE a.`id` = j.`agent_action_id` AND a.`enabled` = 1 '
@@ -115,6 +119,7 @@ final class JobClaimer
                 . 'WHERE j.`id` = :id AND j.`target_agent_id` = UNHEX(:hostId) AND j.`status` = :queued '
                 . 'AND j.`available_at` <= :serverNow AND j.`execution_deadline` > :serverNow '
                 . 'AND j.`attempt` < j.`max_attempts` '
+                . 'AND NOT EXISTS (SELECT 1 FROM `muwa_agent_rollback` r WHERE r.`active` = 1) '
                 . 'AND EXISTS (SELECT 1 FROM `muwa_agent_action` a '
                 . 'INNER JOIN `muwa_agent_host` h ON h.`id` = j.`target_agent_id` '
                 . 'WHERE a.`id` = j.`agent_action_id` AND a.`enabled` = 1 '

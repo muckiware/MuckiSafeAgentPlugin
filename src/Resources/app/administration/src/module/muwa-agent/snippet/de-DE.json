@@ -8,7 +8,8 @@
       "hosts": "Agenten",
       "actions": "Actions",
       "hooks": "Repository-Hooks",
-      "runs": "Runs & Jobs"
+      "runs": "Runs & Jobs",
+      "rollback": "Rollback"
     },
     "host": {
       "nameLabel": "Name",
@@ -178,6 +179,40 @@
         "expired": "Abgelaufen",
         "unknown": "Unbekannt"
       }
+    },
+    "rollback": {
+      "cardTitle": "Kontrollierter Rollback",
+      "description": "Der Rollback schaltet die Agent-Ausführung global ab: Facility-Backups laufen danach ohne Agent-Hooks, es werden keine neuen Agent-Runs oder Jobs erzeugt und kein Job wird mehr von Agenten übernommen. Der Rollback ist umkehrbar.",
+      "reloadButton": "Aktualisieren",
+      "startButton": "Rollback starten",
+      "restartButton": "Offene Jobs erneut abbrechen",
+      "stopButton": "Rollback beenden",
+      "activeLabel": "Rollback aktiv",
+      "activeYes": "Rollback aktiv",
+      "activeNo": "Rollback nicht aktiv",
+      "yes": "Ja",
+      "no": "Nein",
+      "startedAtLabel": "Gestartet",
+      "stoppedAtLabel": "Beendet",
+      "openJobsTitle": "Offene Jobs",
+      "unknownHint": "Jobs im Status „Unbekannt“ blockieren das Entfernen der Hooks nicht, werden aber nie automatisch wiederholt. Bitte manuell bewerten: Auf dem jeweiligen Host prüfen, ob die Action ausgeführt wurde.",
+      "readyYes": "Bereit zum Entfernen der Hooks",
+      "readyNo": "Nicht bereit: Jobs offen",
+      "polling": "Wird alle 5 Sekunden aktualisiert …",
+      "gateInactive": "Der Rollback ist nicht aktiv. Agent-Hooks werden normal ausgeführt.",
+      "gateNotReady": "Es sind noch Jobs offen (wartend, übernommen, laufend oder Abbruch angefordert). Die Hooks erst entfernen, wenn alle offenen Jobs abgeschlossen sind.",
+      "gateReady": "Keine offenen Jobs mehr: Die Agent-Hooks können jetzt gemäß Runbook entfernt werden.",
+      "runbookHint": "Ablauf, Prüfschritte und Rückweg stehen im Runbook docs/rollout-runbook.md des Plugins.",
+      "startConfirmTitle": "Rollback starten",
+      "startConfirmText": "Die Agent-Ausführung wird global abgeschaltet. Facility-Backups laufen ab sofort ohne Agent-Hooks weiter; es werden keine neuen Agent-Runs oder Jobs erzeugt und Agenten übernehmen keine Jobs mehr. Ein erneuter Start bricht zwischenzeitlich entstandene Jobs ab.",
+      "startConfirmJobs": "Offene Jobs werden abgebrochen: Wartende und übernommene Jobs enden als Zeitüberschreitung (rollback), laufende Jobs erhalten eine Abbruchanforderung.",
+      "startConfirmRunning": "Läuft gerade ein Backup, werden dessen post- und finally-Hooks übersprungen. Danach den Zustand der betroffenen Hosts prüfen (z. B. gestoppte Dienste wieder starten).",
+      "startConfirmButton": "Rollback starten",
+      "startSuccess": "Der Rollback ist aktiv, offene Jobs wurden abgebrochen.",
+      "stopConfirmTitle": "Rollback beenden",
+      "stopConfirmText": "Die Agent-Ausführung wird wieder eingeschaltet. Ab dem nächsten Backup werden konfigurierte Agent-Hooks erneut als Jobs erzeugt und von den Agenten ausgeführt. Abgebrochene Jobs werden nicht wiederholt.",
+      "stopConfirmButton": "Rollback beenden",
+      "stopSuccess": "Der Rollback wurde beendet."
     }
   },
   "sw-privileges": {
@@ -190,7 +225,8 @@
       "muwa_agent": {
         "label": "Mucki Agent",
         "provisioner": "Agenten provisionieren, Secrets rotieren und Agenten widerrufen",
-        "executor": "Fehlerausgaben (stdout/stderr) fehlgeschlagener Jobs lesen"
+        "executor": "Fehlerausgaben (stdout/stderr) fehlgeschlagener Jobs lesen",
+        "rollback": "Kontrollierten Rollback starten und beenden (Agent-Ausführung global abschalten, offene Jobs abbrechen)"
       }
     }
   }

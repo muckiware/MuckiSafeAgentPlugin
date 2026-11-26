@@ -13,6 +13,7 @@ namespace MuckiSafeAgentPlugin\tests\Integration\Service\Job;
 
 use Doctrine\DBAL\Connection;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795478400CreateRollbackState;
 use MuckiSafeAgentPlugin\Service\Job\ClaimConflict;
 use MuckiSafeAgentPlugin\Service\Job\JobClaimer;
 use MuckiSafeAgentPlugin\Service\Job\JobReaper;
@@ -52,6 +53,7 @@ final class JobReaperTest extends TestCase
         $this->connection = $connection;
         $this->dropSchema();
         (new Migration1795132800CreateAgentSchema())->update($connection);
+        (new Migration1795478400CreateRollbackState())->update($connection);
         $this->now = new \DateTimeImmutable('2030-01-02 03:04:05.000', new \DateTimeZone('UTC'));
         $this->runId = $this->insertRun();
         $this->actionId = $this->insertAction('safe');
@@ -491,7 +493,7 @@ final class JobReaperTest extends TestCase
     private function dropSchema(): void
     {
         $this->connection->executeStatement(
-            'DROP TABLE IF EXISTS `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
+            'DROP TABLE IF EXISTS `muwa_agent_rollback`, `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
             . '`muwa_agent_repository_hook`, `muwa_agent_action`, `muwa_agent_host`'
         );
     }

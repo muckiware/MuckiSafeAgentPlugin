@@ -36,6 +36,7 @@ its arm64 run is reported as skipped with that reason (decision 2026-11-25).
 | `scripts/trigger-backup.sh` | real backup (`bin/console muckiware:backup:create`) and run/job read-back |
 | `scripts/assert-effects.sh` | generic assertions (phase jobs, core outcome, exit code, open jobs) |
 | `scripts/inject-failure.sh` | generic injectors and the resilience cases |
+| `scripts/rollback.sh` | the controlled rollback of Task 33 played through (step `rollback`) |
 | `scripts/cleanup.sh` | artifacts and teardown |
 | `scenarios/<service>.sh` | the service: implements the interface below |
 
@@ -62,7 +63,20 @@ its arm64 run is reported as skipped with that reason (decision 2026-11-25).
    secret, journal and wakeup mount; the success case passes again.
 10. **facility-only** — AgentPlugin deactivated: a Facility backup succeeds
     and creates no agent run.
-11. **cleanup** — artifacts (`junit.xml`, `logs/`, `runs/`, `manifests/`,
+11. **rollback** — the controlled rollback (Task 33,
+    `docs/rollout-runbook.md`) with `SCENARIO_SUCCESS_CASE`: the first job is
+    stalled while `running`, `muwa:agent:rollback start` turns it into
+    `cancel_requested` (exit 3), the agent journal shows `stopping job
+    execution` (`stop requested by the control plane`), `rollback status
+    --wait=180` exits 0, the run ends `failed`/`unknown` and the job
+    `timed_out`/`unknown`. With the switch active a backup creates no run
+    and no job but a snapshot. The repository's hooks are deleted over the
+    admin API, `rollback stop`, and the plain Facility backup again creates
+    no run but a snapshot (the E2E has no legacy hooks or systemd.path kits
+    to re-enable). The saved hooks are restored afterwards, so the step can
+    be repeated; `inject_reset_all` also stops an active switch and restores
+    the hooks of an aborted rollback.
+12. **cleanup** — artifacts (`junit.xml`, `logs/`, `runs/`, `manifests/`,
     `cases/`) to `--out`, teardown.
 
 Every check runs in a subshell with `set -euo pipefail` in effect and stdin

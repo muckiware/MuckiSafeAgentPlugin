@@ -6,7 +6,7 @@
  * generic DAL; the server rejects them independently of these roles.
  *
  * The permission grid only offers viewer/editor/creator/deleter columns, so
- * provisioner and executor are additional permissions of the same key.
+ * provisioner, executor and rollback are additional permissions of the same key.
  */
 Shopware.Service('privileges').addPrivilegeMappingEntry({
     category: 'permissions',
@@ -53,6 +53,15 @@ Shopware.Service('privileges').addPrivilegeMappingEntry({
         // Reads stdout/stderr failure tails through the dedicated output route.
         executor: {
             privileges: [],
+            dependencies: [
+                'muwa_agent.viewer',
+            ],
+        },
+        // Starts and stops the controlled rollback (global switch plus job drain).
+        rollback: {
+            privileges: [
+                'muwa_agent.rollback',
+            ],
             dependencies: [
                 'muwa_agent.viewer',
             ],

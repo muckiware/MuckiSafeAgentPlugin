@@ -181,6 +181,22 @@
             <argument type="service" id="MuckiSafeAgentPlugin\Service\Action\ActionConfigurator"/>
             <tag name="controller.service_arguments"/>
         </service>
+        <service id="MuckiSafeAgentPlugin\Service\Job\JobDrainer" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Service\Rollback\AgentRollback" public="true">
+            <argument type="service" id="Doctrine\DBAL\Connection"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Job\JobDrainer"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Command\RollbackCommand" public="true">
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Rollback\AgentRollback"/>
+            <tag name="console.command"/>
+        </service>
+        <service id="MuckiSafeAgentPlugin\Controller\Admin\RollbackController" public="true">
+            <argument type="service" id="Psr\Log\LoggerInterface"/>
+            <argument type="service" id="MuckiSafeAgentPlugin\Service\Rollback\AgentRollback"/>
+            <tag name="controller.service_arguments"/>
+        </service>
         <service id="MuckiSafeAgentPlugin\Controller\Admin\JobOutputController" public="true">
             <argument type="service" id="Psr\Log\LoggerInterface"/>
             <argument type="service" id="Doctrine\DBAL\Connection"/>

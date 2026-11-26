@@ -16,6 +16,8 @@ use MuckiSafeAgentPlugin\Core\Job\IdempotencyClass;
 use MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder;
 use MuckiSafeAgentPlugin\Service\Action\ActionValidator;
 use MuckiSafeAgentPlugin\Service\Action\ParameterValidator;
+use MuckiSafeAgentPlugin\Service\Rollback\RollbackActiveException;
+use MuckiSafeAgentPlugin\Service\Rollback\RollbackSwitch;
 use Shopware\Core\Defaults;
 use Shopware\Core\Framework\Uuid\Uuid;
 
@@ -74,6 +76,10 @@ final class JobCreator
 
         $this->connection->beginTransaction();
         try {
+            // Serialized against AgentRollback::start(): no job during a rollback.
+            if (RollbackSwitch::isActive($this->connection, true)) {
+                throw new RollbackActiveException('Agent rollback is active: no job is created.');
+            }
             $now = new \DateTimeImmutable((string) $this->connection->fetchOne('SELECT UTC_TIMESTAMP(3)'), new \DateTimeZone('UTC'));
             if ($executionDeadline <= $now) {
                 throw new \InvalidArgumentException('Execution deadline must be in the future.');

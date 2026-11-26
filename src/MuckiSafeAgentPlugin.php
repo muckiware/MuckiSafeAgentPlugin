@@ -14,6 +14,7 @@ namespace MuckiSafeAgentPlugin;
 use Doctrine\DBAL\Connection;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
 use MuckiSafeAgentPlugin\Migration\Migration1795305600CreateSecretState;
+use MuckiSafeAgentPlugin\Migration\Migration1795478400CreateRollbackState;
 use MuckiSafeAgentPlugin\Service\Plugin\FacilityDependencyGuard;
 use Shopware\Core\Framework\Plugin;
 use Shopware\Core\Framework\Plugin\Context\ActivateContext;
@@ -38,7 +39,7 @@ class MuckiSafeAgentPlugin extends Plugin
 
         $tables = array_merge(
             Migration1795132800CreateAgentSchema::TABLES,
-            [Migration1795305600CreateSecretState::TABLE_NAME]
+            [Migration1795305600CreateSecretState::TABLE_NAME, Migration1795478400CreateRollbackState::TABLE_NAME]
         );
         foreach ($tables as $table) {
             $connection->executeStatement('DROP TABLE IF EXISTS `' . $table . '`');
