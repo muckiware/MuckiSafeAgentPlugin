@@ -14,6 +14,7 @@ never need a Go toolchain.
 
 * Design document: `docs/design.md`
 * Normative implementation contract: `docs/implementation-plan.md`
+* Staged production rollout and controlled rollback: `docs/rollout-runbook.md`
 
 ## Facility dependency
 

@@ -21,7 +21,8 @@
 # Steps: preflight, stack, agent, service, backup, cases (every fixture case),
 # resilience (generic fault injection), transport (explicit HTTP and its
 # warning), upgrade (docker compose pull && up -d keeps the host side),
-# facility-only (backups without the AgentPlugin), cleanup. Writes JUnit XML,
+# facility-only (backups without the AgentPlugin), rollback (the controlled
+# rollback of Task 33 played through), cleanup. Writes JUnit XML,
 # container/agent logs, run/job states and file manifests to --out.
 
 # Steps and cases are invoked indirectly through check/infra.
@@ -42,7 +43,7 @@ MUCKISAFE_MODE=source
 AGENT_MODE=source
 
 usage() {
-    sed -n '2,24p' "$0" >&2
+    sed -n '2,26p' "$0" >&2
     exit 2
 }
 
@@ -81,6 +82,8 @@ load_modules() {
     . "$SCRIPTS_DIR/assert-effects.sh"
     # shellcheck source=inject-failure.sh
     . "$SCRIPTS_DIR/inject-failure.sh"
+    # shellcheck source=rollback.sh
+    . "$SCRIPTS_DIR/rollback.sh"
     # shellcheck source=cleanup.sh
     . "$SCRIPTS_DIR/cleanup.sh"
     # shellcheck disable=SC1090
@@ -285,7 +288,7 @@ finish() {
 # The case lists are read from fd 3, so nothing a case runs can consume them.
 run_cases() {
     local name function expected
-    expected=$((JUNIT_TESTS + $(scenario_cases | grep -c .) + $(resilience_cases | grep -c .) + 3))
+    expected=$((JUNIT_TESTS + $(scenario_cases | grep -c .) + $(resilience_cases | grep -c .) + 4))
     plan cases "every case of fixtures/$SCENARIO_NAME/fixture.json"
     while IFS= read -r name <&3; do
         run_case "$SCENARIO_NAME.cases" "$name" run_fixture_case "$name"
@@ -300,6 +303,8 @@ run_cases() {
     run_case "$SCENARIO_NAME.upgrade" "compose update keeps binary, config, secret, journal and wakeup path" upgrade_check
     plan facility-only "backups without the AgentPlugin"
     run_case "$SCENARIO_NAME.facility-only" "Facility backup without AgentPlugin" facility_only_check
+    plan rollback "controlled rollback: drain, gate, no agent runs, hook removal, plain Facility backup"
+    run_case "$SCENARIO_NAME.rollback" "controlled rollback played through" rollback_check
     if [ "$JUNIT_TESTS" -ne "$expected" ]; then
         junit_case "$SCENARIO_NAME" "every planned case ran" 0 failure "expected $expected cases, recorded $JUNIT_TESTS"
     fi

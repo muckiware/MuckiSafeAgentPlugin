@@ -54,6 +54,24 @@ export default class MuwaAgentApiService extends ApiService {
             .then((response) => ApiService.handleResponse(response));
     }
 
+    rollbackStatus() {
+        return this.httpClient
+            .get(`${this.getApiBasePath()}/rollback`, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
+    startRollback() {
+        return this.httpClient
+            .post(`${this.getApiBasePath()}/rollback/start`, {}, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
+    stopRollback() {
+        return this.httpClient
+            .post(`${this.getApiBasePath()}/rollback/stop`, {}, { headers: this.getBasicHeaders() })
+            .then((response) => ApiService.handleResponse(response));
+    }
+
     validateAction(definition) {
         return this.httpClient
             .post(`${this.getApiBasePath()}/action/validate`, { definition }, { headers: this.getBasicHeaders() })

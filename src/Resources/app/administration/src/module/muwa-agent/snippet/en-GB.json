@@ -8,7 +8,8 @@
       "hosts": "Agents",
       "actions": "Actions",
       "hooks": "Repository hooks",
-      "runs": "Runs & jobs"
+      "runs": "Runs & jobs",
+      "rollback": "Rollback"
     },
     "host": {
       "nameLabel": "Name",
@@ -178,6 +179,40 @@
         "expired": "Expired",
         "unknown": "Unknown"
       }
+    },
+    "rollback": {
+      "cardTitle": "Controlled rollback",
+      "description": "The rollback switches agent execution off globally: Facility backups then run without agent hooks, no new agent runs or jobs are created and agents no longer claim jobs. The rollback can be reversed.",
+      "reloadButton": "Refresh",
+      "startButton": "Start rollback",
+      "restartButton": "Cancel open jobs again",
+      "stopButton": "Stop rollback",
+      "activeLabel": "Rollback active",
+      "activeYes": "Rollback active",
+      "activeNo": "Rollback not active",
+      "yes": "Yes",
+      "no": "No",
+      "startedAtLabel": "Started",
+      "stoppedAtLabel": "Stopped",
+      "openJobsTitle": "Open jobs",
+      "unknownHint": "Jobs in state \"Unknown\" do not block hook removal but are never repeated automatically. Assess them manually: check on the respective host whether the action was executed.",
+      "readyYes": "Ready to remove the hooks",
+      "readyNo": "Not ready: jobs open",
+      "polling": "Refreshing every 5 seconds …",
+      "gateInactive": "The rollback is not active. Agent hooks run normally.",
+      "gateNotReady": "Jobs are still open (queued, claimed, running or cancel requested). Only remove the hooks once all open jobs have finished.",
+      "gateReady": "No open jobs left: the agent hooks can now be removed as described in the runbook.",
+      "runbookHint": "The procedure, checks and way back are described in the plugin runbook docs/rollout-runbook.md.",
+      "startConfirmTitle": "Start rollback",
+      "startConfirmText": "Agent execution is switched off globally. From now on Facility backups continue without agent hooks; no new agent runs or jobs are created and agents no longer claim jobs. Starting again cancels jobs created in the meantime.",
+      "startConfirmJobs": "Open jobs are cancelled: queued and claimed jobs end as timed out (rollback), running jobs receive a cancel request.",
+      "startConfirmRunning": "If a backup is running right now, its post and finally hooks are skipped. Afterwards check the state of the affected hosts (e.g. restart stopped services).",
+      "startConfirmButton": "Start rollback",
+      "startSuccess": "The rollback is active, open jobs were cancelled.",
+      "stopConfirmTitle": "Stop rollback",
+      "stopConfirmText": "Agent execution is switched on again. From the next backup on, configured agent hooks create jobs again and agents execute them. Cancelled jobs are not repeated.",
+      "stopConfirmButton": "Stop rollback",
+      "stopSuccess": "The rollback was stopped."
     }
   },
   "sw-privileges": {
@@ -190,7 +225,8 @@
       "muwa_agent": {
         "label": "Mucki Agent",
         "provisioner": "Provision agents, rotate secrets and revoke agents",
-        "executor": "Read error output (stdout/stderr) of failed jobs"
+        "executor": "Read error output (stdout/stderr) of failed jobs",
+        "rollback": "Start and stop the controlled rollback (switch agent execution off globally, cancel open jobs)"
       }
     }
   }

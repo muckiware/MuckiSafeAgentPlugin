@@ -18,6 +18,7 @@ use MuckiFacilityPlugin\Events\BeforeBackupCreatedEvent;
 use MuckiFacilityPlugin\Subscriber\BackupCommandSubscriber;
 use MuckiSafeAgentPlugin\Api\JobCompleteRequest;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795478400CreateRollbackState;
 use MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder;
 use MuckiSafeAgentPlugin\Service\Action\ActionValidator;
 use MuckiSafeAgentPlugin\Service\Hook\AgentHookFailure;
@@ -78,6 +79,7 @@ final class BackupLifecycleTest extends TestCase
         $this->connection = $connection;
         $this->dropSchema();
         (new Migration1795132800CreateAgentSchema())->update($connection);
+        (new Migration1795478400CreateRollbackState())->update($connection);
         $now = new \DateTimeImmutable((string) $connection->fetchOne('SELECT UTC_TIMESTAMP()'), new \DateTimeZone('UTC'));
         $this->now = $now->modify('+1 second');
         $this->repositoryId = $this->insertFacilityRepository('none', 'none');
@@ -224,6 +226,50 @@ final class BackupLifecycleTest extends TestCase
 
         self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `muwa_agent_backup_run`'));
         self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `muwa_agent_job`'));
+    }
+
+    /**
+     * Task 33: while the rollback switch is active a backup runs like a
+     * Facility-only backup: no run, no job, and re-enabled legacy hooks do
+     * not count as a conflict.
+     */
+    public function testActiveRollbackCreatesNoRunAndIgnoresReEnabledLegacyHooks(): void
+    {
+        $this->configureHooks(['pre' => 60, 'post' => 60, 'finally' => 60]);
+        $this->connection->executeStatement(
+            'UPDATE `muwa_backup_repository` SET `pre_backup_command_type` = \'php\' WHERE `id` = UNHEX(:id)',
+            ['id' => $this->repositoryId]
+        );
+        $this->connection->executeStatement('UPDATE `muwa_agent_rollback` SET `active` = 1');
+
+        $this->coordinator()->before($this->repositoryId);
+        $this->coordinator()->after($this->repositoryId);
+        $this->coordinator()->finished($this->repositoryId, null);
+
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `muwa_agent_backup_run`'));
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM `muwa_agent_job`'));
+    }
+
+    /**
+     * A rollback started during a backup creates no further job (it would
+     * never be claimed): post and finally are skipped and the run is closed
+     * as failed with the primary error `rollback_active`.
+     */
+    public function testRollbackStartedDuringABackupSkipsLaterPhasesAndClosesTheRun(): void
+    {
+        $this->configureHooks(['pre' => 60, 'post' => 60, 'finally' => 60]);
+        $this->agentModes = ['pre' => 'succeed', 'post' => 'succeed', 'finally' => 'succeed'];
+
+        $this->coordinator()->before($this->repositoryId);
+        $this->connection->executeStatement('UPDATE `muwa_agent_rollback` SET `active` = 1');
+        $this->coordinator()->after($this->repositoryId);
+        $this->coordinator()->finished($this->repositoryId, null);
+
+        $run = $this->singleRun();
+        self::assertSame('failed', $run['status']);
+        self::assertSame('rollback_active', $run['primary_error_code']);
+        self::assertNotNull($run['finished_at']);
+        self::assertSame(['pre' => 'succeeded'], $this->jobStatuses());
     }
 
     public function testDisabledHooksCountAsNoHooks(): void
@@ -726,7 +772,7 @@ final class BackupLifecycleTest extends TestCase
     private function dropSchema(): void
     {
         $this->connection->executeStatement(
-            'DROP TABLE IF EXISTS `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
+            'DROP TABLE IF EXISTS `muwa_agent_rollback`, `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
             . '`muwa_agent_repository_hook`, `muwa_agent_action`, `muwa_agent_host`'
         );
     }

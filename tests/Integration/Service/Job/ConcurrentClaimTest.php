@@ -14,6 +14,7 @@ namespace MuckiSafeAgentPlugin\tests\Integration\Service\Job;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795478400CreateRollbackState;
 use MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder;
 use MuckiSafeAgentPlugin\Service\Action\ActionValidator;
 use MuckiSafeAgentPlugin\Service\Job\JobClaimer;
@@ -40,6 +41,7 @@ final class ConcurrentClaimTest extends TestCase
         $this->connection = $connection;
         $this->dropSchema();
         (new Migration1795132800CreateAgentSchema())->update($connection);
+        (new Migration1795478400CreateRollbackState())->update($connection);
         $this->runId = $this->insertRun();
         $this->hostId = $this->insertHost('host-a', ['service.control']);
         $this->actionId = $this->insertAction(['service.control']);
@@ -644,7 +646,7 @@ final class ConcurrentClaimTest extends TestCase
     private function dropSchema(): void
     {
         $this->connection->executeStatement(
-            'DROP TABLE IF EXISTS `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
+            'DROP TABLE IF EXISTS `muwa_agent_rollback`, `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
             . '`muwa_agent_repository_hook`, `muwa_agent_action`, `muwa_agent_host`'
         );
     }

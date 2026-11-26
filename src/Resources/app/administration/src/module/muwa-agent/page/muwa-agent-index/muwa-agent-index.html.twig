@@ -31,6 +31,11 @@
                                     {{ $t('muwa-agent.tabs.runs') }}
                                 </sw-tabs-item>
                             {% endblock %}
+                            {% block muwa_agent_index_tab_rollback %}
+                                <sw-tabs-item :route="{ name: 'muwa.agent.index.rollback' }">
+                                    {{ $t('muwa-agent.tabs.rollback') }}
+                                </sw-tabs-item>
+                            {% endblock %}
                         </sw-tabs>
                     {% endblock %}
 

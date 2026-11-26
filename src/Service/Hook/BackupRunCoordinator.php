@@ -20,6 +20,8 @@ use Shopware\Core\Framework\Uuid\Uuid;
 
 use MuckiSafeAgentPlugin\Core\Defaults as PluginDefaults;
 use MuckiSafeAgentPlugin\Core\Job\JobPhase;
+use MuckiSafeAgentPlugin\Service\Rollback\RollbackActiveException;
+use MuckiSafeAgentPlugin\Service\Rollback\RollbackSwitch;
 
 /**
  * Correlates one Facility backup with one agent BackupRun and its
@@ -36,9 +38,16 @@ use MuckiSafeAgentPlugin\Core\Job\JobPhase;
  * The first recorded primary error is never replaced. A failing hook with
  * failOnError is thrown into the Facility lifecycle; otherwise it is logged
  * and tolerated.
+ *
+ * While the rollback switch (Task 33) is active no run and no job is created:
+ * a backup runs like a Facility-only backup, and re-enabled legacy hooks are
+ * no conflict. A run that was already open skips its remaining phases (their
+ * jobs would never be claimed) and is closed with `rollback_active`.
  */
 final class BackupRunCoordinator
 {
+    public const ROLLBACK_ACTIVE = 'rollback_active';
+
     /** @param (\Closure(): \DateTimeImmutable)|null $clock */
     public function __construct(
         protected LoggerInterface $logger,
@@ -55,6 +64,11 @@ final class BackupRunCoordinator
         if ($hooks === []) {
             return;
         }
+        if ($this->rollbackActive()) {
+            $this->logger->info('Agent rollback is active: backup runs without agent hooks.', PluginDefaults::DEFAULT_LOGGER_CONFIG);
+
+            return;
+        }
         try {
             $this->legacyGuard->assertNoConflict($repositoryId, Context::createDefaultContext());
         } catch (HookConfigurationException $exception) {
@@ -69,7 +83,7 @@ final class BackupRunCoordinator
         $hooks = $this->enabledHooks($repositoryId);
         $runId = $this->activeRun($repositoryId);
         if ($runId === null) {
-            if ($hooks !== []) {
+            if ($hooks !== [] && !$this->rollbackActive()) {
                 throw new AgentHookFailure(AgentHookFailure::RUN_MISSING, 'No active agent backup run for the repository.');
             }
 
@@ -102,7 +116,16 @@ final class BackupRunCoordinator
         if ($hook === null) {
             return;
         }
-        $outcome = $this->executor->execute($hook, $runId);
+        try {
+            $outcome = $this->executor->execute($hook, $runId);
+        } catch (RollbackActiveException) {
+            // The job creator refuses atomically against a concurrent start().
+            $message = sprintf('Agent rollback is active: %s hook skipped.', $phase->value);
+            $this->logger->warning($message, PluginDefaults::DEFAULT_LOGGER_CONFIG);
+            $this->recordPrimaryError($runId, self::ROLLBACK_ACTIVE, $message);
+
+            return;
+        }
         if ($outcome->succeeded()) {
             return;
         }
@@ -159,6 +182,11 @@ final class BackupRunCoordinator
         }
 
         return $runId;
+    }
+
+    private function rollbackActive(): bool
+    {
+        return RollbackSwitch::isActive($this->connection);
     }
 
     private function activeRun(string $repositoryId): ?string

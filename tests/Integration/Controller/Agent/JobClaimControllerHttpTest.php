@@ -14,6 +14,7 @@ namespace MuckiSafeAgentPlugin\tests\Integration\Controller\Agent;
 use Doctrine\DBAL\Connection;
 use MuckiSafeAgentPlugin\Controller\Agent\JobClaimController;
 use MuckiSafeAgentPlugin\Migration\Migration1795132800CreateAgentSchema;
+use MuckiSafeAgentPlugin\Migration\Migration1795478400CreateRollbackState;
 use MuckiSafeAgentPlugin\Migration\Migration1795305600CreateSecretState;
 use MuckiSafeAgentPlugin\Service\Action\ActionDefinitionDecoder;
 use MuckiSafeAgentPlugin\Service\Action\ActionValidator;
@@ -59,6 +60,7 @@ final class JobClaimControllerHttpTest extends TestCase
         $this->connection = $connection;
         $this->dropSchema();
         (new Migration1795132800CreateAgentSchema())->update($connection);
+        (new Migration1795478400CreateRollbackState())->update($connection);
         (new Migration1795305600CreateSecretState())->update($connection);
         $provisioner = self::getContainer()->get(AgentProvisioner::class);
         self::assertInstanceOf(AgentProvisioner::class, $provisioner);
@@ -303,7 +305,7 @@ final class JobClaimControllerHttpTest extends TestCase
     private function dropSchema(): void
     {
         $this->connection->executeStatement(
-            'DROP TABLE IF EXISTS `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
+            'DROP TABLE IF EXISTS `muwa_agent_rollback`, `muwa_agent_nonce`, `muwa_agent_job`, `muwa_agent_backup_run`, '
             . '`muwa_agent_repository_hook`, `muwa_agent_action`, `muwa_agent_host`, `muwa_agent_secret_state`'
         );
     }

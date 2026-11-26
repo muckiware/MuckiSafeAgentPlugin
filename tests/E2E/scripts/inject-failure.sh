@@ -111,19 +111,24 @@ no_running_run() {
 }
 
 # Everything an aborted case may leave behind, including a backup that is
-# still running in the app container.
+# still running in the app container and an active rollback switch (which
+# would keep every later backup from creating agent runs).
 inject_reset_all() {
     api_unblock
     [ -d "$WAKEUP_HOST_DIR" ] && wakeup_unblock
-    agent_installed || return 0
-    agent_thaw 2>/dev/null || true
-    scenario_stall off || true
-    systemctl is-active --quiet "$AGENT_UNIT" || agent_start
-    [ -f "$WORK_DIR/repository-id" ] && [ -d "$(core_repository_dir)" ] && core_repair
+    if agent_installed; then
+        agent_thaw 2>/dev/null || true
+        scenario_stall off || true
+        systemctl is-active --quiet "$AGENT_UNIT" || agent_start
+        [ -f "$WORK_DIR/repository-id" ] && [ -d "$(core_repository_dir)" ] && core_repair
+    fi
     if [ -f "$WORK_DIR/stack.env" ]; then
         stack exec -T app pkill -f 'muckiware:backup:create' </dev/null >/dev/null 2>&1 || true
         wait_for 300 "no running agent run" no_running_run || true
     fi
+    # Last, once no backup runs anymore: otherwise a still running backup
+    # would create post/finally jobs again right after the rollback stop.
+    rollback_reset
 }
 
 # --- helpers --------------------------------------------------------------------
