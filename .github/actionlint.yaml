@@ -1,4 +1,0 @@
-# Custom label of the native arm64 E2E runner (e2e-linux.yml).
-self-hosted-runner:
-  labels:
-    - muckisafe-e2e

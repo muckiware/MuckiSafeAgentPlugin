@@ -5,8 +5,7 @@
 #      SHA256SUMS, packed as mucki-agent-X.Y.Z-linux.tar.gz (+ .sha256);
 #   2. verify: on clean native amd64 and arm64 runners the tarball is checked
 #      (static ELF, build settings, checksums, ldd, --version, config validate);
-#   3. e2e: the hardened systemd E2E runs with exactly these binaries;
-#   4. publish: only then the GitHub release agent-vX.Y.Z is created.
+#   3. publish: only then the GitHub release agent-vX.Y.Z is created.
 #
 # Hosts download the tarball, check its .sha256, unpack it and run
 # install.sh, which verifies SHA256SUMS again. Go is never needed on a host.
@@ -120,17 +119,9 @@ jobs:
           tar -xzf "release/mucki-agent-${VERSION}-linux.tar.gz" -C unpacked
           agent/packaging/tests/binary-artifacts-test.sh "unpacked/mucki-agent-${VERSION}" "${VERSION}"
 
-  e2e:
-    name: Linux E2E with the release binaries
-    needs: build
-    uses: ./.github/workflows/e2e-linux.yml
-    with:
-      agent-artifact: agent-release
-      ref: ${{ inputs.tag || github.ref_name }}
-
   publish:
     name: Publish ${{ inputs.tag || github.ref_name }}
-    needs: [ build, verify, e2e ]
+    needs: [ build, verify ]
     runs-on: ubuntu-latest
     permissions:
       contents: write

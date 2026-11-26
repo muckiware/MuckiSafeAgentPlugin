@@ -332,7 +332,7 @@ MuckiSafeAgentPlugin/
 ├── agent/internal/{action,agent,api,config,executor,idempotency,policy,primitives,version,wakeup}/
 ├── agent/packaging/systemd/mucki-agent.service
 ├── agent/packaging/{install.sh,uninstall.sh}
-└── .github/workflows/{php-tests,go-tests,e2e-linux,agent-release,plugin-release}.yml
+└── .github/workflows/{php-tests,go-tests,e2e-linux,agent-release,plugin-release}.yml   # e2e-linux.yml entfernt 2026-11-26 (Task 32)
 ```
 
 `composer.json` und `.gitattributes` schließen `agent/`, `tests/`, `.github/` und Entwicklungsartefakte aus dem Plugin-Distributionsarchiv aus. Der Quell-Tag enthält weiterhin beide Komponenten.
@@ -853,7 +853,7 @@ Nachtrag Packaging (vom E2E-Härtungstest unter echtem systemd belegt):
 - Artefakttests: `tests/Artifacts/plugin-archive-test.sh` prüft `git archive` (export-ignore) und `composer archive` (`archive.exclude`); `agent/packaging/build-release.sh` baut das Agent-Release-Verzeichnis, `agent/packaging/tests/binary-artifacts-test.sh` prüft es (`file`, `readelf`, `go version -m`, `ldd`, `--version`, `config validate`, `SHA256SUMS`) nativ auf `ubuntu-24.04` und `ubuntu-24.04-arm`.
 - `go-tests.yml` führt `go test` als root aus: die Primitive-Tests brauchen `chown`, `setgroups` und `setfsuid` wie der Agent selbst. `composer validate` läuft mit `--no-check-version`, weil `create-release.yml` das `version`-Feld liest.
 - Releases: Das Plugin bleibt bei `vX.Y.Z` aus `composer.json` (`create-release.yml` → `plugin-release.yml`: ZIP aus `git archive` mit Archivtest, Packagist, Dispatch `muckisafe-agent-plugin-release` mit `{package, ref}`). Der Agent hat eigene Tags `agent-vX.Y.Z` (`agent-release.yml`: reproduzierbarer Tarball `mucki-agent-X.Y.Z-linux.tar.gz` + `.sha256`, Artefaktprüfung auf frischen amd64-/arm64-Runnern, E2E mit genau diesen Binaries, erst dann das GitHub-Release); Packagist ignoriert diese Tags.
-- `e2e-linux.yml` läuft nativ auf `ubuntu-24.04` und `ubuntu-24.04-arm`; der self-hosted Runner `[self-hosted, linux, arm64, muckisafe-e2e]` wird über die Repository-Variable `MUCKISAFE_E2E_ARM64_RUNNER=true` zugeschaltet, sobald er registriert ist (Task 32 ergänzt dort die Dienstszenarien).
+- `e2e-linux.yml` läuft nativ auf `ubuntu-24.04` und `ubuntu-24.04-arm`; der self-hosted Runner `[self-hosted, linux, arm64, muckisafe-e2e]` wird über die Repository-Variable `MUCKISAFE_E2E_ARM64_RUNNER=true` zugeschaltet, sobald er registriert ist (Task 32 ergänzt dort die Dienstszenarien). *(entfernt 2026-11-26, siehe Nachtrag in Task 32)*
 - `agent/packaging/tests/hardening-e2e.sh` ist der E2E-Härtungstest (Fake-Control-Plane `agent/internal/e2e/fakeplane`); lokal läuft er per `agent/packaging/tests/run-in-container.sh` in einem privilegierten systemd-Container.
 
 `agent/packaging/install.sh` erzeugt idempotent Config-/State-Verzeichnisse als `root:root` und `/var/lib/mucki-agent/wakeup` als `root:33`, Mode `0770`; es prüft, dass GID 33 zum Container-`www-data`-Vertrag passt, bevor es systemd startet.
@@ -870,7 +870,7 @@ Die systemd-Unit setzt mindestens `UMask=0077`, `PrivateTmp=true`, restriktive `
 **Workflows:**
 - `php-tests.yml`: Shopware 6.6/6.7, PHP 8.3/8.4/8.5 soweit kompatibel; MySQL 8.0/8.4.
 - `go-tests.yml`: `go test -race`, `go vet`, Coverage-Artefakt; eigener Graceful-Shutdown-/Signaltest mit laufendem Fake-Prozess und Journalprüfung.
-- `e2e-linux.yml`: amd64 nativ auf GitHub-Runner; vollständige arm64-Dienst-E2E auf Runner-Labels `[self-hosted, linux, arm64, muckisafe-e2e]`. QEMU ist nur für ergänzende Smoke-Tests zulässig und ersetzt die native arm64-Abnahme nicht.
+- `e2e-linux.yml`: amd64 nativ auf GitHub-Runner; vollständige arm64-Dienst-E2E auf Runner-Labels `[self-hosted, linux, arm64, muckisafe-e2e]`. QEMU ist nur für ergänzende Smoke-Tests zulässig und ersetzt die native arm64-Abnahme nicht. *(entfernt 2026-11-26, siehe Nachtrag in Task 32)*
 - `plugin-release.yml`: ZIP/Packagist und Dispatch `muckisafe-agent-plugin-release` mit `{package, ref}`.
 - `agent-release.yml`: Linux-Binaries, Checksummen, Config, systemd, Installer.
 
@@ -940,7 +940,7 @@ Dokumentieren: GitHub-Release-Download, SHA-256-Prüfung, systemd, root-owned Co
 - Create: `tests/E2E/scripts/{setup,trigger-backup,inject-failure,assert-effects,cleanup}.sh`
 - Create: `tests/E2E/scenarios/{bitwarden,jellyfin,immich,paperless}.sh`
 - Create: `tests/E2E/fixtures/{bitwarden,jellyfin,immich,paperless}/`
-- Modify: `.github/workflows/e2e-linux.yml`
+- Modify: `.github/workflows/e2e-linux.yml` *(entfernt 2026-11-26, siehe Nachtrag in Task 32)*
 
 **Reihenfolge:** Facility `v0.11.0` → AgentPlugin Composer-Release + Agent-Binary → MuckiSafe-Image.
 
@@ -976,8 +976,15 @@ Nachtrag bei der Umsetzung (2026-11-25):
 - **System under test** ist MuckiSafes eigenes `docker-compose.yml` am Commit `MUCKISAFE_COMPOSE_REF` plus `tests/E2E/compose/compose.yaml` (Image, Repository-Verzeichnis, Scheduler minütlich, Caddy-TLS-Proxy mit lokaler CA im Host-Trust-Store – der Agent spricht standardmäßig HTTPS ohne TLS-Skip).
 - **HTTP-Warnung:** Die vorhandene WARN-Zeile des API-Clients nennt jetzt ausdrücklich mitlesbare Actions, Parameter, Ergebnisse und Fehlerausgaben; der Transport-Schritt der E2E prüft genau diesen Text im Journal.
 - **Struktur:** generische Resilienzfälle (Agent offline/zurück und über die Deadline, API offline, verlorener/duplizierter Wakeup, Agent-Neustart, Lease-Ablauf mit altem Worker, Completion-Retry, Core-Fehler) liegen in `scripts/inject-failure.sh` und laufen pro Szenario mit dessen Erfolgsfall; deterministisches Timing liefert `scenario_stall`. Schnittstelle und Ablauf: `tests/E2E/README.md`; `scripts/selftest.sh` prüft Pins, Schnittstelle, Fallabdeckung, den Bitwarden-Skip und den Dry-Run statisch (auch auf macOS).
-- Pull Requests führen nur Selftest und Hardening-E2E aus; die Dienst-E2E laufen auf dev/main, manuell (optional mit `agent-version`/`muckisafe-image`) und aus dem Agent-Release; jeder Lauf schreibt `run-info.json` (Modi, Image-Digest, Agent-Version, Tarball-SHA, `gateE`).
+- ~~Pull Requests führen nur Selftest und Hardening-E2E aus; die Dienst-E2E laufen auf dev/main, manuell (optional mit `agent-version`/`muckisafe-image`) und aus dem Agent-Release~~ *(überholt, siehe Nachtrag 2026-11-26)*; jeder Lauf schreibt `run-info.json` (Modi, Image-Digest, Agent-Version, Tarball-SHA, `gateE`).
 - **Lokaler Stack-Smoke (macOS, Docker Desktop)** gegen MuckiSafes echtes Compose am gepinnten Commit belegte: Plugin-Aktivierung im Source-Image, Admin-API, Provisionierung, Caddy-HTTPS, Wakeup-Mounts, echtes Facility-Backup mit Snapshot sowie Hook → Job → Deadline → `timed_out`/`pre_hook_failed`/Core übersprungen. Dabei gefunden und behoben: (1) **Produktfehler `WakeupWriter`**: Der Error-Handler wandelte auch die PHP-8.4-Deprecation beim ersten Logger-Autoload in eine `ErrorException`, sodass ein nicht beschreibbares Wakeup-Verzeichnis das ganze Backup abbrach; jetzt nur `E_WARNING|E_NOTICE` und Logging nach `restore_error_handler()` (Regressionstest). (2) Frische Facility ist deaktiviert (`MuckiFacilityPlugin.config.active`), `backup:create` endet dann still mit Exit 0. (3) Reine Datei-Repositories brauchen Typ `noneDatabase`.
+
+Nachtrag 2026-11-26: **E2E nicht mehr in den GitHub-Workflows.**
+- Entscheidung: `.github/workflows/e2e-linux.yml` ist entfernt – damit laufen weder die Dienst-E2E (`tests/E2E/scripts/run-linux-e2e.sh`) noch ihr Harness-Selftest noch der Hardening-E2E (`agent/packaging/tests/hardening-e2e.sh`) in GitHub Actions. `.github/actionlint.yaml` (nur das Runner-Label `muckisafe-e2e`) ist ebenfalls entfernt; die Repository-Variable `MUCKISAFE_E2E_ARM64_RUNNER` und der self-hosted Runner werden nicht mehr genutzt.
+- `agent-release.yml` hat keinen `e2e`-Job mehr; `publish` hängt nur noch von `build` und `verify` ab. Ein Agent-Release wird damit nicht mehr automatisch gegen die echte systemd-Härtung geprüft.
+- Grund: Die Läufe auf den GitHub-Runnern waren nicht stabil genug (Docker-Hub-Rate-Limits beim Pull, Runner-spezifisches Netzwerkverhalten bei der API-Fehlerinjektion) und blockierten Merges und Releases.
+- Die Skripte unter `tests/E2E/` bleiben unverändert nutzbar und werden manuell auf einem nativen Linux-Wegwerf-Host ausgeführt (siehe *Verify* oben und `tests/E2E/README.md`); der Hardening-E2E lokal per `agent/packaging/tests/run-in-container.sh`. `scripts/selftest.sh` prüft keinen Workflow mehr.
+- Gate E bleibt unverändert: Es verlangt weiterhin reale Release/Release-Läufe aller Szenarien auf beiden nativen Architekturen, jetzt als manuell ausgeführte und archivierte Läufe (`run-info.json`, JUnit, Logs aus `--out`).
 
 ### Task 33: Gestufter Produktiv-Rollout und kontrollierter Rollback
 

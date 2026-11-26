@@ -230,17 +230,6 @@ check_compose() {
     [ -f "$E2E_DIR/compose/Dockerfile.agent-plugin" ] || fail "missing compose/Dockerfile.agent-plugin"
 }
 
-check_workflow() {
-    local workflow=$REPO_ROOT/.github/workflows/e2e-linux.yml
-    grep -q 'tests/E2E/scripts/run-linux-e2e.sh' "$workflow" || fail "e2e-linux.yml does not run the service E2E"
-    grep -q 'tests/E2E/scripts/selftest.sh' "$workflow" || fail "e2e-linux.yml does not run the selftest"
-    for service in "${SERVICES[@]}"; do
-        grep -q "$service" "$workflow" || fail "e2e-linux.yml misses scenario $service"
-    done
-    grep -q 'muckisafe-e2e' "$workflow" || fail "e2e-linux.yml misses the native arm64 runner"
-    grep -Eq 'upload-artifact' "$workflow" || fail "e2e-linux.yml uploads no artifacts"
-}
-
 main() {
     need jq
     need comm
@@ -252,7 +241,6 @@ main() {
     done
     check_bitwarden_image_platform
     check_compose
-    check_workflow
     check_dry_run
     if [ "$FAILURES" -gt 0 ]; then
         echo "E2E harness selftest: $FAILURES failure(s)" >&2

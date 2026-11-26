@@ -21,6 +21,9 @@ muckisafe-e2e]`). **Bitwarden runs on amd64 only**: the pinned
 `mcr.microsoft.com/mssql/server` image is published for linux/amd64 only;
 its arm64 run is reported as skipped with that reason (decision 2026-11-25).
 
+The service E2E is not part of the GitHub workflows (decision 2026-11-26):
+it runs manually on a disposable native Linux host as shown above.
+
 ## Layout
 
 | Path | Content |
