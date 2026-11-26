@@ -1,7 +1,8 @@
-# Creates a version tag and a GitHub release whenever main is merged into
+# Creates the version tags and GitHub releases whenever main is merged into
 # the release branch. The version is taken from the "version" field in
-# composer.json (tag name: "v" + version, matching the MuckiSafeAgentPlugin
-# release convention).
+# composer.json; plugin and Linux agent share it:
+#   - plugin: tag "v" + version       -> plugin-release.yml (ZIP, Packagist)
+#   - agent:  tag "agent-v" + version -> agent-release.yml (tarball)
 #
 # Detected merge styles:
 #   - merge commit (git merge main / merged PR) -> main's tip is a parent
@@ -35,6 +36,7 @@ jobs:
     outputs:
       release: ${{ steps.detect.outputs.release }}
       tag: ${{ steps.tagcheck.outputs.tag }}
+      agent_tag: ${{ steps.agenttagcheck.outputs.tag }}
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@v7
@@ -128,6 +130,38 @@ jobs:
             echo "tagged=false" >> "${GITHUB_OUTPUT}"
           fi
 
+      - name: Check existing agent tag
+        id: agenttagcheck
+        if: steps.detect.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          TAG="agent-v${VERSION}"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+          TAGGED_COMMIT="$(git ls-remote origin "refs/tags/${TAG}^{}" | awk '{print $1}')"
+
+          if [ -n "${TAGGED_COMMIT}" ] && [ "${TAGGED_COMMIT}" != "${HEAD_SHA}" ]; then
+            echo "::error::Tag ${TAG} already exists on ${TAGGED_COMMIT}, but this merge points to ${HEAD_SHA}. Bump the version in composer.json before merging main into release."
+            exit 1
+          fi
+
+          if [ -n "${TAGGED_COMMIT}" ]; then
+            echo "Tag ${TAG} already exists on this commit -> skipping tag creation."
+            echo "tagged=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "tagged=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Configure git identity
+        if: steps.tagcheck.outputs.tagged == 'false' || steps.agenttagcheck.outputs.tagged == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Create and push tag
         if: steps.tagcheck.outputs.tagged == 'false'
         env:
@@ -135,10 +169,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
           git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "refs/tags/${TAG}"
+
+      # Pushed with GITHUB_TOKEN, so the tag push does not start
+      # agent-release.yml by itself - the "agent" job below calls it.
+      - name: Create and push agent tag
+        if: steps.agenttagcheck.outputs.tagged == 'false'
+        env:
+          TAG: ${{ steps.agenttagcheck.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git tag -a "${TAG}" -m "Agent release ${TAG}"
           git push origin "refs/tags/${TAG}"
 
       - name: Create GitHub release
@@ -158,7 +201,7 @@ jobs:
   # A release created with GITHUB_TOKEN does not fire the "release" event, so
   # plugin-release.yml (plugin ZIP, Packagist, MuckiSafe dispatch) is called
   # directly. Runs on every release attempt (including re-runs), so a failed
-  # step can be retried. The Linux agent is released by agent-release.yml.
+  # step can be retried.
   plugin:
     name: Plugin release
     needs: release
@@ -167,3 +210,14 @@ jobs:
     with:
       tag: ${{ needs.release.outputs.tag }}
     secrets: inherit
+
+  # Same reason: agent-release.yml (static amd64/arm64 binaries, tarball,
+  # verification on native runners, GitHub release agent-vX.Y.Z) is called
+  # directly. Re-runs replace the assets of an existing agent release.
+  agent:
+    name: Agent release
+    needs: release
+    if: needs.release.outputs.release == 'true'
+    uses: ./.github/workflows/agent-release.yml
+    with:
+      tag: ${{ needs.release.outputs.agent_tag }}

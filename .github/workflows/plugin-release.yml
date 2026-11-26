@@ -7,7 +7,8 @@
 #   3. sends the repository dispatch `muckisafe-agent-plugin-release` with
 #      {package, ref} to muckiware/MuckiSafe, which pins exactly that version.
 #
-# The Linux agent is released separately by agent-release.yml (agent-v*).
+# The Linux agent is released by agent-release.yml (agent-v*), which
+# create-release.yml calls next to this workflow with the same version.
 # Called by create-release.yml; rerun a failed release with "Run workflow".
 #
 # Secrets: MUCKISAFE_DISPATCH_TOKEN (fine-grained PAT, contents: write on

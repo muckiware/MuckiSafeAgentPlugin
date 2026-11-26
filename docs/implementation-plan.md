@@ -986,6 +986,11 @@ Nachtrag 2026-11-26: **E2E nicht mehr in den GitHub-Workflows.**
 - Die Skripte unter `tests/E2E/` bleiben unverändert nutzbar und werden manuell auf einem nativen Linux-Wegwerf-Host ausgeführt (siehe *Verify* oben und `tests/E2E/README.md`); der Hardening-E2E lokal per `agent/packaging/tests/run-in-container.sh`. `scripts/selftest.sh` prüft keinen Workflow mehr.
 - Gate E bleibt unverändert: Es verlangt weiterhin reale Release/Release-Läufe aller Szenarien auf beiden nativen Architekturen, jetzt als manuell ausgeführte und archivierte Läufe (`run-info.json`, JUnit, Logs aus `--out`).
 
+Nachtrag 2026-11-26: **Agent-Release läuft mit jedem Plugin-Release.**
+- Befund: `agent-release.yml` startete nur bei einem manuell gepushten Tag `agent-v*`; ein solches Tag wurde nie angelegt, daher gab es bis `v0.2.0` keinen fertig gebauten Agenten (der `artifacts`-Job in `go-tests.yml` baut und prüft nur, lädt aber nichts hoch).
+- Entscheidung: Plugin und Agent teilen die Version aus `composer.json`. `create-release.yml` legt beim Merge `main` → `release` neben `vX.Y.Z` auch `agent-vX.Y.Z` auf demselben Commit an und ruft `agent-release.yml` per `workflow_call` auf (ein mit `GITHUB_TOKEN` gepushtes Tag löst keinen Workflow aus). Ein bestehendes `agent-vX.Y.Z` auf einem anderen Commit bricht den Release ab.
+- Manuell bleibt möglich: Tag `agent-vX.Y.Z` pushen oder `agent-release.yml` per „Run workflow" mit einem bestehenden Tag starten (z. B. Nachbau für `agent-v0.2.0`).
+
 ### Task 33: Gestufter Produktiv-Rollout und kontrollierter Rollback
 
 **Reihenfolge und Abnahmekriterien:**
